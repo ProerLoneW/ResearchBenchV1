@@ -1,0 +1,5 @@
+task.md
+data/
+__pycache__/
+.workbuddy
+.DS_Store

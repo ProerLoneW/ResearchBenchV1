@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 科研论文工作台</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260823b">
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">AI 科研<span>工作台</span></div>
+    <nav class="tabs">
+      <button data-tab="dashboard" class="active">📊 看板</button>
+      <button data-tab="library">📚 论文库</button>
+      <button data-tab="news">📰 资讯库</button>
+      <button data-tab="radar">📡 Research Radar</button>
+      <button data-tab="settings">⚙️ 设置</button>
+    </nav>
+  </header>
+
+  <div class="container">
+
+    <!-- 看板 -->
+    <section class="page active" id="page-dashboard">
+      <div class="grid stat-grid" id="statCards"></div>
+      <div class="section-title">阅读趋势 & 领域分布</div>
+      <div class="grid charts">
+        <div class="card"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+        <div class="card"><div class="chart-box"><canvas id="fieldChart"></canvas></div></div>
+      </div>
+    </section>
+
+    <!-- 论文库 -->
+    <section class="page" id="page-library">
+      <div class="toolbar">
+        <input id="libSearch" placeholder="搜索标题 / 摘要 / 笔记 / 标签" style="min-width:240px">
+        <select id="libField"></select>
+        <select id="libStatus">
+          <option value="">全部状态</option>
+          <option value="unread">未读</option>
+          <option value="reading">在读</option>
+          <option value="read">已读</option>
+        </select>
+        <button class="primary" id="btnAddPaper">+ 新增论文</button>
+        <button class="btn" id="btnAddField">+ 领域</button>
+      </div>
+      <div class="paper-list" id="paperList"></div>
+      <div class="empty hidden" id="libEmpty">还没有论文，去 Research Radar 发现或点击「新增论文」。</div>
+      <div class="pager" id="paperPager"></div>
+    </section>
+
+    <!-- 资讯库 -->
+    <section class="page" id="page-news">
+      <div class="toolbar">
+        <input id="newsSearch" placeholder="搜索标题 / 摘要" style="min-width:240px">
+        <select id="newsSource"></select>
+        <span class="muted" id="newsCount"></span>
+      </div>
+      <div class="news-list" id="newsList"></div>
+      <div class="empty hidden" id="newsEmpty">还没有资讯，去 Research Radar 检索「AI 资讯」并加入。</div>
+      <div class="pager" id="newsPager"></div>
+    </section>
+
+    <!-- Radar -->
+    <section class="page" id="page-radar">
+      <div class="card">
+        <div class="toolbar" style="margin-bottom:6px">
+          <strong>检索模板</strong>
+          <button class="btn sm" id="btnAddTpl">+ 新增模板</button>
+        </div>
+        <div id="tplList"></div>
+      </div>
+      <div class="section-title">执行检索</div>
+      <div class="card">
+        <div class="row2">
+          <div>
+            <div class="field-row"><label>检索类型</label>
+              <select id="runType">
+                <option value="paper">最新论文</option>
+                <option value="news">AI 资讯</option>
+              </select>
+            </div>
+            <div class="field-row"><label>关键词</label>
+              <input id="runKeywords" placeholder="逗号分隔，如 VLA, World Model" style="width:100%">
+            </div>
+            <div class="field-row"><label>领域</label>
+              <input id="runField" placeholder="如 VLA（可选）" style="width:100%">
+            </div>
+          </div>
+          <div>
+            <div class="field-row"><label>时间范围</label>
+              <select id="runDays">
+                <option value="2">最近 2 天</option>
+                <option value="7" selected>最近 7 天（默认）</option>
+                <option value="14">最近 14 天</option>
+                <option value="30">最近 30 天</option>
+              </select>
+            </div>
+            <div class="field-row"><label>数量</label>
+              <input id="runMax" type="number" value="30" style="width:100px">
+            </div>
+            <div class="field-row"><label>资讯语言</label>
+              <select id="runLang">
+                <option value="en">English / 全球（默认，拿国际资讯）</option>
+                <option value="zh">中文 / 中国</option>
+                <option value="auto">英文优先，失败回退中文</option>
+              </select>
+            </div>
+            <div class="field-row"><label>资讯渠道</label>
+              <select id="runChannel">
+                <option value="all" selected>全渠道（Google News + 国内媒体 + 公众号）</option>
+                <option value="google">仅 Google News</option>
+                <option value="cn">仅国内媒体 / 公众号（量子位、36氪、InfoQ、RSSHub 公众号）</option>
+              </select>
+            </div>
+            <div class="field-row"><label></label>
+              <button class="primary" id="btnRun">▶ 运行检索</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="toolbar" style="margin-top:14px">
+        <button class="btn sm" id="btnAddAll">全部加入论文库</button>
+        <span class="muted" id="radarCount"></span>
+      </div>
+      <div id="radarResults"></div>
+    </section>
+
+    <!-- 设置 -->
+    <section class="page" id="page-settings">
+      <div class="card" style="margin-bottom:16px">
+        <h3>AI / API 配置</h3>
+        <p class="muted">自定义 OpenAI-Compatible API，使工作台 AI 能力（总结 / 论文库问答）不依赖单一平台。API Key 后端加密存储。</p>
+        <div class="field-row"><label>Provider</label><input id="apiProvider" style="width:100%"></div>
+        <div class="field-row"><label>Base URL</label><input id="apiBase" placeholder="https://api.openai.com/v1" style="width:100%"></div>
+        <div class="field-row"><label>API Key</label><input id="apiKey" type="password" placeholder="留空表示不修改" style="width:100%"></div>
+        <div class="field-row"><label>Model</label><input id="apiModel" placeholder="gpt-4o / deepseek-chat ..." style="width:100%"></div>
+        <div class="field-row"><label>其他参数</label><input id="apiOther" placeholder='{"top_p":0.9}' style="width:100%"></div>
+        <div class="toolbar"><button class="primary" id="btnSaveApi">保存 API 配置</button></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3>arXiv 检索源</h3>
+        <p class="muted">arXiv 官方主站在国内常需代理；可切换为上海交大 / 中科大的国内直连镜像，通常无需代理即可访问。切换后下次检索生效。任一源失败会自动回退到主站。</p>
+        <div class="field-row"><label>论文源</label><select id="arxivSource" style="width:100%"></select></div>
+        <div class="toolbar"><button class="primary" id="btnSaveArxiv">保存 arXiv 源</button>
+          <span class="muted" id="arxivSourceTip"></span></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3>资讯源 · 自定义 RSS</h3>
+        <p class="muted">除 Google News 外，「国内媒体」渠道会并行抓取下方所有 RSS 源（已实测可用的内置源：量子位、36氪、InfoQ、少数派）。你也可以追加自己的媒体 / 公众号转 RSS（如 werss.io）。每行一个，格式：<code>名称|URL</code>。</p>
+        <div id="rssBuiltin" class="muted" style="margin-bottom:8px"></div>
+        <textarea id="rssFeeds" rows="4" style="width:100%" placeholder="机器之心备用|https://xxx/feed&#10;我的媒体|https://werss.io/xxx"></textarea>
+        <div class="toolbar"><button class="primary" id="btnSaveRss">保存自定义 RSS</button>
+          <span class="muted" id="rssTip"></span></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3>资讯源 · 微信公众号（RSSHub）</h3>
+        <p class="muted">微信公众号没有官方 RSS。标准做法是用 <a href="https://docs.rsshub.app" target="_blank">RSSHub</a> 把公众号转成 RSS，路由为 <code>{RSSHub地址}/wechat/mp/{gh_id}</code>，其中 <code>gh_id</code> 是公众号原始 ID（gh_ 开头，可在公众号后台「公众号设置」查看）。公共实例常不稳定，建议在本地或服务器自建 RSSHub 后填入下方地址。</p>
+        <div class="field-row"><label>RSSHub 地址</label><input id="rsshubBase" placeholder="https://rsshub.app 或你的自建地址" style="width:100%"></div>
+        <div class="toolbar"><button class="primary" id="btnSaveRsshub">保存 RSSHub 地址</button>
+          <span class="muted" id="rsshubTip"></span></div>
+        <div style="margin-top:10px">
+          <label class="muted">要抓取的公众号（每行 名称|gh_id）</label>
+          <textarea id="wechatAccounts" rows="4" style="width:100%" placeholder="机器之心|gh_4df112579a8c&#10;新智元|gh_xxxxxxxxxxxx"></textarea>
+          <div class="toolbar"><button class="primary" id="btnSaveWechat">保存公众号列表</button>
+            <span class="muted" id="wechatTip"></span></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3>Radar 检索代理</h3>
+        <p class="muted">当本机无法直接访问 arXiv / Google News 时（如内网、沙箱、或需走代理上网），在此填写代理地址，检索即可走代理。留空则使用环境变量 HTTPS_PROXY / HTTP_PROXY，再否则直连。</p>
+        <div class="field-row"><label>代理地址</label><input id="radarProxy" placeholder="http://127.0.0.1:7890" style="width:100%"></div>
+        <div class="toolbar"><button class="primary" id="btnSaveProxy">保存代理</button></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h3>阅读目标</h3>
+        <div class="field-row"><label>每周目标（篇）</label><input id="weeklyGoal" type="number" style="width:120px"></div>
+        <div class="toolbar"><button class="primary" id="btnSavePrefs">保存目标</button></div>
+      </div>
+
+      <div class="card">
+        <h3>飞书云文档（TeX → 飞书）</h3>
+        <p class="muted">仅用于论文中文阅读文档。配置应用凭证并授权后，TeX→飞书 工具即可写入同名云文档。</p>
+        <div class="field-row"><label>App ID</label><input id="feishuAppId" style="width:100%"></div>
+        <div class="field-row"><label>App Secret</label><input id="feishuSecret" type="password" style="width:100%"></div>
+        <div class="toolbar">
+          <button class="btn" id="btnSaveFeishu">保存飞书凭证</button>
+          <button class="primary" id="btnAuthFeishu">🔑 授权并获取 Token</button>
+          <span class="muted" id="feishuStatus"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 论文详情 / 编辑 弹窗 -->
+  <div class="modal-mask" id="paperModal">
+    <div class="modal" id="paperModalBody"></div>
+  </div>
+  <!-- 通用输入弹窗 -->
+  <div class="modal-mask" id="promptModal">
+    <div class="modal" style="width:420px">
+      <h3 id="promptTitle">输入</h3>
+      <input id="promptInput" style="width:100%">
+      <hr class="sep">
+      <div class="toolbar"><button class="primary" id="promptOk">确定</button>
+        <button class="btn" id="promptCancel">取消</button></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="/static/chart.umd.min.js"></script>
+  <script src="/static/app.js?v=20260823b"></script>
+</body>
+</html>
