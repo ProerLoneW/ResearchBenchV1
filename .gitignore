@@ -3,3 +3,5 @@ data/
 __pycache__/
 .workbuddy
 .DS_Store
+# 本地启动脚本（含密钥，仅本机使用，切勿提交）
+local_start.sh
