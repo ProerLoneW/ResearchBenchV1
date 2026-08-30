@@ -1,7 +1,7 @@
 #!/bin/bash
 # ResearchBench 本地启动脚本
 # 在你自己的 macOS 终端运行：bash start.sh
-# 然后浏览器打开 http://127.0.0.1:8765
+# 然后浏览器打开 http://127.0.0.1:8889
 #
 # 说明：
 # - 本脚本在本机终端运行，能访问你本机的代理（如 127.0.0.1:52129），
@@ -11,7 +11,7 @@ set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_PY="/Users/wangyini/.workbuddy/binaries/python/envs/default/bin/python"
-PORT=8765
+PORT=8889
 
 cd "$PROJECT_DIR"
 

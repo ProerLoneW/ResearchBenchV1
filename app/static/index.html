@@ -43,6 +43,7 @@
         </select>
         <button class="primary" id="btnAddPaper">+ 新增论文</button>
         <button class="btn" id="btnAddField">+ 领域</button>
+        <button class="btn" id="btnTranslateTasks" title="查看后台自动翻译任务的执行进度">🌍 翻译任务</button>
       </div>
       <div class="paper-list" id="paperList"></div>
       <div class="empty hidden" id="libEmpty">还没有论文，去 Research Radar 发现或点击「新增论文」。</div>
@@ -123,6 +124,27 @@
         <button class="btn sm" id="btnAddAll">全部加入论文库</button>
         <span class="muted" id="radarCount"></span>
       </div>
+      <!-- 检索步骤进度：检索进行中显示，每一步 wait/running/ok/error -->
+      <div class="card hidden" id="radarProgressCard">
+        <div class="rp-head">
+          <strong>检索进度</strong>
+          <span class="muted" id="rpState"></span>
+        </div>
+        <div class="rp-steps" id="rpSteps"></div>
+        <div class="rp-bar"><div class="rp-bar-fill" id="rpBarFill"></div></div>
+      </div>
+      <!-- 批量入库工具条：常驻显示，未检索时按钮置灰 -->
+      <div class="toolbar" id="radarBulkBar" style="margin-top:-6px">
+        <button class="btn sm" id="btnSelAll" disabled>全选</button>
+        <button class="btn sm" id="btnSelNone" disabled>取消全选</button>
+        <span class="muted" id="radarSelCount">已选 0 条</span>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer"
+               title="勾选后，入库的论文会自动从 arXiv 下载原文 PDF 与 LaTeX 源码，解压后一并上传到 IMA 知识库。串行执行，较慢。">
+          <input type="checkbox" id="chkFetchAssets"> 入库时同时抓取 PDF 与源码（较慢，串行执行）
+        </label>
+        <button class="btn sm primary" id="btnBulkAdd" disabled>批量入库（0）</button>
+        <span class="muted" id="radarBulkTip"></span>
+      </div>
       <div id="radarResults"></div>
     </section>
 
@@ -201,6 +223,19 @@
   <div class="modal-mask" id="paperModal">
     <div class="modal" id="paperModalBody"></div>
   </div>
+  <!-- 翻译任务窗口：后台自动翻译的进度面板 -->
+  <div class="modal-mask" id="translateModal">
+    <div class="modal" style="width:660px">
+      <h3>🌍 论文翻译任务</h3>
+      <p class="muted" style="margin:0 0 10px">任务在后台自动执行：下载源码 → 大模型逐节翻译 → xelatex 编译 → 上传 IMA 知识库。关闭窗口不影响执行；翻译全文耗时较长（通常数分钟到数十分钟），完成后卡片会显示中文版路径。</p>
+      <div id="trTaskList" style="max-height:52vh;overflow:auto"></div>
+      <hr class="sep">
+      <div class="toolbar">
+        <button class="primary" id="trWinClose">关闭</button>
+        <button class="btn" id="trWinRefresh">立即刷新</button>
+      </div>
+    </div>
+  </div>
   <!-- 通用输入弹窗 -->
   <div class="modal-mask" id="promptModal">
     <div class="modal" style="width:420px">
@@ -214,6 +249,6 @@
 
   <div class="toast" id="toast"></div>
   <script src="/static/chart.umd.min.js"></script>
-  <script src="/static/app.js?v=20260823b"></script>
+  <script src="/static/app.js?v=20260831a"></script>
 </body>
 </html>

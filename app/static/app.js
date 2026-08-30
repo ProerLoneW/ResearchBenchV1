@@ -2,10 +2,39 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+// ============ 管理员密码（仅保护"改数据"的操作）============
+// 服务端设置 ADMIN_PASSWORD 后，POST/PUT/PATCH/DELETE 需要 X-Admin-Password 头。
+// 最小侵入：只在收到 401 时 prompt() 一次，成功后存进 sessionStorage 并重试一次请求。
+// 检索/搜索类接口服务端已放行（见 app/admin_guard.py 白名单），不会触发弹窗。
+const ADMIN_PWD_KEY = "researchbench.adminPwd";
+
+function adminHeaders() {
+  const pwd = sessionStorage.getItem(ADMIN_PWD_KEY);
+  return pwd ? { "X-Admin-Password": pwd } : {};
+}
+
+async function requestWithAdmin(url, init = {}) {
+  const send = (extra) => fetch(url, { ...init, headers: { ...(init.headers || {}), ...extra } });
+  let res = await send(adminHeaders());
+  if (res.status === 401) {
+    const pwd = window.prompt("该操作会修改数据，请输入管理员密码：");
+    if (pwd) {
+      const retry = await send({ "X-Admin-Password": pwd });
+      if (retry.status === 401) {
+        sessionStorage.removeItem(ADMIN_PWD_KEY); // 密码不对，清掉缓存
+        return retry;
+      }
+      sessionStorage.setItem(ADMIN_PWD_KEY, pwd);
+      return retry;
+    }
+  }
+  return res;
+}
+
 async function api(path, opts = {}) {
-  const res = await fetch("/api" + path, {
-    headers: { "Content-Type": "application/json" },
+  const res = await requestWithAdmin("/api" + path, {
     ...opts,
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   if (!res.ok) {
@@ -87,6 +116,15 @@ async function loadStats() {
 
 // ============ 论文库 ============
 let ALL_FIELDS = [];
+// pid -> {ima_pdf_path, ima_tex_path, ima_zh_pdf_path}
+// 这三个字段不在 /api/papers 的返回里（ima_store 输出不含），单独取一次后按 pid 合并。
+let IMA_PATHS = {};
+async function loadImaPaths() {
+  try {
+    const r = await api("/translate/ima_paths");
+    IMA_PATHS = (r && r.paths) || {};
+  } catch (e) { IMA_PATHS = {}; }   // 取不到就当没有，不影响列表
+}
 async function loadFields() {
   ALL_FIELDS = await api("/fields");
   const sel = $("#libField");
@@ -109,6 +147,7 @@ async function loadPapers(page) {
   params.set("page", paperPage);
   params.set("page_size", paperPageSize);
   const raw = await api("/papers?" + params.toString());
+  await loadImaPaths();
   // 兼容两种返回形态：旧版返回数组，新版返回 {items,total,pages,...}
   const data = Array.isArray(raw) ? { items: raw, total: raw.length, page: paperPage, page_size: paperPageSize, pages: 1 } : raw;
   const papers = data.items || [];
@@ -126,10 +165,211 @@ async function loadPapers(page) {
       <div class="meta">${p.field_name ? `<span class="tag">${esc(p.field_name)}</span>` : ""}
         ${p.feishu_doc_url ? "<span class='tag'>📄 飞书</span>" : ""}</div>
       <div class="meta pc-tags">${p.tags ? esc(p.tags) : "（无标签）"}</div>
+      ${imaPathsHtml(p)}
+      ${assetsRowHtml(p)}
+      ${translateRowHtml(p)}
     </div>`).join("");
   $$(".paper-card", box).forEach((c) => c.onclick = () => openPaper(c.dataset.id));
+  $$("[data-tr]", box).forEach((b) => b.onclick = (e) => {
+    e.stopPropagation();                       // 别冒泡到"打开详情"
+    requestTranslate(+b.dataset.tr, b);
+  });
+  $$("[data-assets]", box).forEach((b) => b.onclick = (e) => {
+    e.stopPropagation();                       // 别冒泡到"打开详情"
+    fetchOneAssets(+b.dataset.assets, b);
+  });
   renderPager($("#paperPager"), data, loadPapers, (sz) => { paperPageSize = sz; paperPage = 1; loadPapers(); });
 }
+
+// IMA 资产位置优先取论文自身的字段（/api/papers 现在会带出），
+// 取不到再退回 /translate/ima_paths 那份按 pid 合并的结果。
+function paperImaPaths(p) {
+  const im = IMA_PATHS[p.id] || {};
+  return {
+    ima_pdf_path: p.ima_pdf_path || im.ima_pdf_path || "",
+    ima_tex_path: p.ima_tex_path || im.ima_tex_path || "",
+    ima_zh_pdf_path: p.ima_zh_pdf_path || im.ima_zh_pdf_path || "",
+  };
+}
+
+// IMA 知识库里的资产位置。IMA Web 端没有可按路径直开的链接，
+// 所以这里只做纯文本展示，不伪造可点击 URL；没有值的字段不显示。
+function imaPathsHtml(p) {
+  const im = paperImaPaths(p);
+  const lines = [];
+  if (im.ima_pdf_path) lines.push("原文 PDF：" + im.ima_pdf_path);
+  if (im.ima_tex_path) lines.push("TeX 源码：" + im.ima_tex_path);
+  if (im.ima_zh_pdf_path) lines.push("中文版 PDF：" + im.ima_zh_pdf_path);
+  if (!lines.length) return "";
+  return `<div class="meta pc-tags" style="word-break:break-all">` +
+    lines.map((l) => `<span class="muted" title="${esc(l)}">${esc(l)}</span>`).join("") +
+    `</div>`;
+}
+
+// 卡片上的「抓取 PDF 与源码」入口。
+// 作用有两个：① 入库时抓取失败的可以重试；② Radar 里没勾"同时抓取"就入库的，事后补全。
+function assetsRowHtml(p) {
+  const im = paperImaPaths(p);
+  const hasPdf = !!im.ima_pdf_path;
+  const hasTex = !!im.ima_tex_path;
+  if (hasPdf && hasTex) {
+    return `<div class="toolbar" style="margin-top:2px"><span class="tag">✅ PDF 与源码已在 IMA</span></div>`;
+  }
+  const can = !!p.arxiv_id;
+  const label = (hasPdf || hasTex) ? "📥 补全缺失资源" : "📥 抓取 PDF 与源码";
+  return `<div class="toolbar" style="margin-top:2px">
+    <button class="btn sm ${can ? "primary" : ""}" data-assets="${p.id}"
+      ${can ? "" : `disabled title="该论文没有 arXiv ID，无法从 arXiv 抓取原文与源码"`}>${label}</button>
+    ${can ? "" : `<span class="muted">无 arXiv ID</span>`}
+    <span class="muted" data-assetsmsg="${p.id}"></span>
+  </div>`;
+}
+
+async function fetchOneAssets(pid, btn) {
+  const msg = $(`[data-assetsmsg="${pid}"]`);
+  const label = btn.textContent.trim();
+  btn.disabled = true;
+  btn.textContent = "⏳ 抓取中（较慢）…";
+  if (msg) msg.textContent = "";
+  try {
+    const r = await api(`/papers/${pid}/fetch_assets`, { method: "POST" });
+    btn.textContent = "✅ 已上传到 IMA";
+    const parts = [];
+    if (r.pdf_path) parts.push("PDF " + r.pdf_path);
+    if (r.tex_path) parts.push("源码 " + r.tex_path);
+    if (msg) msg.textContent = parts.join(" ｜ ");
+    toast(r.tex_path ? "PDF 与源码已上传到 IMA" : "PDF 已上传（该项无 LaTeX 源码）");
+    await loadImaPaths();
+    loadPapers();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    if (msg) msg.textContent = "❌ " + e.message;
+    toast("抓取失败：" + e.message);
+  }
+}
+
+// 卡片底部的翻译按钮。前置条件：① 有 arXiv ID；② 已在设置页配置大模型 API
+// （自动翻译直接调大模型，没配置就不让用）。已有中文版时文案改「重新翻译」。
+function translateRowHtml(p) {
+  const hasZh = !!paperImaPaths(p).ima_zh_pdf_path;
+  const noArxiv = !p.arxiv_id;
+  const can = !noArxiv && LLM_READY;
+  const title = noArxiv ? "该论文没有 arXiv ID，无法从 arXiv 取 LaTeX 源码"
+    : (!LLM_READY ? "尚未配置大模型：请到「设置 → AI / API 配置」填写 Base URL / Model / API Key 后使用"
+       : "");
+  return `<div class="toolbar" style="margin-top:2px">
+    <button class="btn sm ${can ? "primary" : ""}" data-tr="${p.id}"
+      ${can ? "" : `disabled title="${esc(title)}"`}>
+      ${hasZh ? "🔁 重新翻译" : "🇨🇳 生成中文版"}
+    </button>
+    ${hasZh ? `<span class="tag">已有中文版</span>` : ""}
+    ${noArxiv ? `<span class="muted">无 arXiv ID</span>` : ""}
+    ${(!noArxiv && !LLM_READY) ? `<span class="muted">未配置大模型</span>` : ""}
+    <span class="muted" data-trmsg="${p.id}"></span>
+  </div>`;
+}
+
+// 按钮触发后台自动翻译：创建任务成功后弹出任务窗口，实时看进度。
+async function requestTranslate(pid, btn) {
+  const msg = $(`[data-trmsg="${pid}"]`);
+  const label = btn.textContent.trim();
+  btn.disabled = true;
+  btn.textContent = "⏳ 下载源码中...";
+  if (msg) msg.textContent = "";
+  try {
+    const r = await api("/papers/" + pid + "/translate", { method: "POST" });
+    btn.textContent = "🌍 翻译中（后台）";
+    if (msg) msg.textContent = `任务 ${r.task_id} 已启动，点「翻译任务」查看进度`;
+    toast("翻译任务已启动，后台自动执行中");
+    openTranslateWindow();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = label;
+    if (msg) msg.textContent = "❌ " + e.message;
+    toast("启动翻译失败：" + e.message);
+  }
+}
+
+// ============ 翻译任务窗口（后台自动翻译的进度面板） ============
+// 启动时查一次大模型配置：没配置就禁用所有「生成中文版」按钮并提示。
+let LLM_READY = false;
+async function initLlmReady() {
+  try {
+    const c = await api("/settings/api");
+    LLM_READY = !!(c && c.api_key_set && c.base_url && c.model_name);
+  } catch (e) { LLM_READY = false; }
+  // 配置查完后再刷一遍论文列表：避免列表先渲染时按钮还带着"未配置"的置灰态
+  if ($("#page-library").classList.contains("active")) loadPapers();
+}
+
+let TR_POLL = null;
+function openTranslateWindow() {
+  $("#translateModal").classList.add("show");
+  refreshTranslateTasks();
+  if (TR_POLL) clearInterval(TR_POLL);
+  TR_POLL = setInterval(() => {
+    if (!$("#translateModal").classList.contains("show")) {
+      clearInterval(TR_POLL); TR_POLL = null; return;   // 窗口关了就停轮询
+    }
+    refreshTranslateTasks(true);
+  }, 2500);
+}
+async function refreshTranslateTasks(silent) {
+  let tasks = [];
+  try {
+    const r = await api("/translate/tasks");
+    tasks = (r && r.tasks) || [];
+  } catch (e) {
+    if (!silent) toast("读取任务列表失败：" + e.message);
+    return;
+  }
+  const box = $("#trTaskList");
+  if (!tasks.length) {
+    box.innerHTML = `<div class="empty" style="padding:18px 0">还没有翻译任务。在论文卡片上点「🇨🇳 生成中文版」即可开始（需先在设置页配置大模型 API）。</div>`;
+    return;
+  }
+  const stMap = { pending: ["待启动", "unread"], running: ["翻译中", "reading"],
+                  done: ["已完成", "read"], failed: ["失败", "unread"] };
+  box.innerHTML = tasks.slice(0, 30).map((t) => {
+    const [stText, stCls] = stMap[t.status] || [t.status || "—", "unread"];
+    const pct = (t.status === "done") ? 100 : Math.max(0, Math.min(99, +(t.progress || 0)));
+    const steps = Array.isArray(t.steps) ? t.steps : [];
+    const cur = steps.find((s) => s.status === "running");
+    const stepHtml = steps.length ? `<div class="tr-steps">` + steps.map((s) => {
+      const icon = s.status === "ok" ? "✓" : s.status === "error" ? "✗"
+        : s.status === "running" ? "⏳" : "○";
+      const cls = s.status === "ok" ? "ok" : s.status === "error" ? "err"
+        : s.status === "running" ? "run" : "";
+      return `<div class="tr-step ${cls}"><span class="tr-ico">${icon}</span>` +
+        `<span class="tr-lbl">${esc(s.label || s.key)}</span>` +
+        (s.detail ? `<span class="tr-det">${esc(s.detail)}</span>` : "") + `</div>`;
+    }).join("") + `</div>` : "";
+    const reason = (t.status === "failed" && t.reason)
+      ? `<div class="tr-reason">❌ ${esc(t.reason)}</div>` : "";
+    const zhPath = (t.status === "done" && t.ima_zh_pdf_path)
+      ? `<div class="tr-zh">📄 中文版已入 IMA：${esc(t.ima_zh_pdf_path)}</div>` : "";
+    return `<div class="tr-card">
+      <div class="tr-head">
+        <div class="tr-title">${esc(t.title || ("论文 #" + t.pid))}</div>
+        <span class="badge ${stCls}">${stText}</span>
+      </div>
+      <div class="tr-meta muted">任务 ${esc(t.task_id || "")} · arXiv:${esc(t.arxiv_id || "—")} · ${esc(t.updated_at || "")}</div>
+      <div class="tr-bar"><div class="tr-bar-fill" style="width:${pct}%"></div></div>
+      <div class="tr-pct muted">${cur ? esc(cur.label + (cur.detail ? " · " + cur.detail : "")) : (t.status === "done" ? "全部完成" : "")} ${pct ? "· " + pct + "%" : ""}</div>
+      ${stepHtml}${reason}${zhPath}
+    </div>`;
+  }).join("");
+}
+$("#btnTranslateTasks").onclick = () => openTranslateWindow();
+$("#trWinClose").onclick = () => {
+  $("#translateModal").classList.remove("show");
+  if (TR_POLL) { clearInterval(TR_POLL); TR_POLL = null; }
+  // 窗口关闭时若刚有任务完成，刷新论文卡片上的中文版标记
+  loadImaPaths(); loadPapers();
+};
+$("#trWinRefresh").onclick = () => refreshTranslateTasks();
+
 function statusText(s){return {unread:"未读",reading:"在读",read:"已读"}[s]||s;}
 function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
@@ -397,7 +637,8 @@ async function openPaperEdit(id) {
     files.forEach((f) => fd.append("files", f, f.webkitRelativePath || f.name));
     $("#m_tex_status").textContent = `正在上传 ${files.length} 个文件...`;
     try {
-      const r = await fetch("/api/papers/" + id + "/upload_tex", { method: "POST", body: fd });
+      // 走 requestWithAdmin：上传会写服务器目录，受管理员密码保护（401 时弹窗后重试）
+      const r = await requestWithAdmin("/api/papers/" + id + "/upload_tex", { method: "POST", body: fd });
       if (!r.ok) { const er = await r.json().catch(()=>({detail:r.statusText})); throw new Error(er.detail||r.statusText); }
       const j = await r.json();
       $("#m_tex_show").value = j.path;
@@ -496,13 +737,7 @@ $("#btnAddTpl").onclick = async () => {
   toast("已新增模板"); loadTemplates();
 };
 async function runTemplate(id) {
-  try {
-    const r = await api("/radar/run_template/" + id, { method: "POST" });
-    renderRadar(r);
-  } catch (e) {
-    $("#radarCount").textContent = "检索失败";
-    $("#radarResults").innerHTML = `<div class="empty">检索失败：${esc(e.message)}<br>请检查本机网络是否能访问 arXiv / Google News。</div>`;
-  }
+  await runRadarBg("/radar/run_template_bg/" + id);
 }
 $("#btnRun").onclick = async () => {
   const type = $("#runType").value;
@@ -512,14 +747,110 @@ $("#btnRun").onclick = async () => {
   const max = +$("#runMax").value || 30;
   const lang = type === "news" ? $("#runLang").value : "en";
   const channel = type === "news" ? $("#runChannel").value : "google";
+  await runRadarBg("/radar/run_bg", { type, keywords, field, days, max_results: max, lang, channel });
+};
+
+// ============ 检索步骤进度（后台 job + 轮询） ============
+let RADAR_JOB_TIMER = null;
+let RADAR_JOB_START = 0;
+
+/**
+ * 启动后台检索并渲染步骤进度条：
+ *   POST run_bg → job_id；每 800ms 轮询 /radar/job/{id}，
+ *   每步 wait/running/ok/error 实时渲染；完成后渲染结果列表。
+ */
+async function runRadarBg(path, body) {
+  if (RADAR_JOB_TIMER) return toast("已有检索在进行中");
+  const btnRun = $("#btnRun");
+  const prevLabel = btnRun ? btnRun.textContent.trim() : "";
+  if (btnRun) { btnRun.disabled = true; btnRun.textContent = "检索中…"; }
+  let jobId = null;
+  let initSteps = [];
   try {
-    const r = await api("/radar/run", { method: "POST", body: { type, keywords, field, days, max_results: max, lang, channel } });
-    renderRadar(r);
+    const r = await api(path, { method: "POST", body: body || {} });
+    jobId = r.job_id;
+    initSteps = r.steps || [];
   } catch (e) {
+    if (btnRun) { btnRun.disabled = false; btnRun.textContent = prevLabel; }
     $("#radarCount").textContent = "检索失败";
     $("#radarResults").innerHTML = `<div class="empty">检索失败：${esc(e.message)}<br>请检查本机网络是否能访问 arXiv / Google News。</div>`;
+    return;
   }
-};
+  RADAR_JOB_START = Date.now();
+  showRadarProgress(initSteps);
+  RADAR_JOB_TIMER = setInterval(async () => {
+    let job = null;
+    try { job = await api("/radar/job/" + jobId); }
+    catch (e) {                       // 404：服务重启丢任务
+      stopRadarJob(btnRun, prevLabel);
+      $("#radarCount").textContent = "任务中断";
+      $("#radarResults").innerHTML = `<div class="empty">检索任务丢失（服务可能重启过）：${esc(e.message)}</div>`;
+      return;
+    }
+    renderRadarProgress(job);
+    if (job.status === "done") {
+      stopRadarJob(btnRun, prevLabel);
+      setTimeout(() => $("#radarProgressCard").classList.add("hidden"), 800);
+      renderRadar(job.result || { type: (job.meta && job.meta.type) || "paper", count: 0, results: [], sources: [] });
+    } else if (job.status === "failed") {
+      stopRadarJob(btnRun, prevLabel);
+      $("#radarCount").textContent = "检索失败";
+      $("#radarResults").innerHTML = `<div class="empty">检索失败：${esc(job.error || "未知错误")}<br>请检查本机网络是否能访问 arXiv / Google News。</div>`;
+    }
+  }, 800);
+}
+function stopRadarJob(btnRun, prevLabel) {
+  if (RADAR_JOB_TIMER) { clearInterval(RADAR_JOB_TIMER); RADAR_JOB_TIMER = null; }
+  if (btnRun) { btnRun.disabled = false; btnRun.textContent = prevLabel; }
+}
+function showRadarProgress(steps) {
+  const card = $("#radarProgressCard");
+  card.classList.remove("hidden");
+  renderRadarProgress({ status: "running", steps: steps || [] });
+}
+function renderRadarProgress(job) {
+  const steps = job.steps || [];
+  const icons = { ok: "✓", error: "✗", running: "⏳", wait: "○" };
+  $("#rpSteps").innerHTML = steps.map((s) => {
+    const cls = s.status === "ok" ? "ok" : s.status === "error" ? "err"
+      : s.status === "running" ? "run" : "";
+    return `<div class="rp-step ${cls}">
+      <span class="rp-ico">${icons[s.status] || "○"}</span>
+      <span class="rp-lbl">${esc(s.label || s.key)}</span>
+      ${s.detail ? `<span class="rp-det">${esc(s.detail)}</span>` : ""}
+    </div>`;
+  }).join("");
+  const done = steps.filter((s) => s.status === "ok").length;
+  const failed = steps.filter((s) => s.status === "error").length;
+  const total = Math.max(1, steps.length);
+  const pct = Math.round(((done + (failed ? 0.5 : 0)) / total) * 100);
+  const fill = $("#rpBarFill");
+  fill.style.width = pct + "%";
+  fill.classList.toggle("rp-indeterminate", pct === 0 && job.status === "running");
+  const secs = RADAR_JOB_START ? Math.round((Date.now() - RADAR_JOB_START) / 1000) : 0;
+  $("#rpState").textContent = job.status === "running"
+    ? `进行中 · ${secs}s` : (job.status === "done" ? `完成 · ${secs}s` : "失败");
+}
+// 多选状态：勾选的是 lastRadarItems 的下标，重新检索时重置
+let radarSel = new Set();
+let radarBulkBusy = false;
+
+// 「入库时同时抓取 PDF 与源码」开关。
+// 默认开启：用户加入论文库的预期就是"论文进了 IMA"，只写一条 metadata 而不带
+// 原文与源码会让人以为没同步成功。选择记在 localStorage，改过一次就一直生效。
+const FETCH_ASSETS_KEY = "rb_fetch_assets";
+function initFetchAssetsPref() {
+  const cb = $("#chkFetchAssets");
+  if (!cb) return;
+  const saved = localStorage.getItem(FETCH_ASSETS_KEY);
+  cb.checked = saved === null ? true : saved === "1";
+  cb.onchange = () => localStorage.setItem(FETCH_ASSETS_KEY, cb.checked ? "1" : "0");
+}
+function wantFetchAssets() {
+  const cb = $("#chkFetchAssets");
+  return !!(cb && cb.checked);
+}
+
 function renderRadar(r) {
   lastRadarItems = r.results;
   lastRadarType = r.type;
@@ -537,12 +868,19 @@ function renderRadar(r) {
   }
   if (!r.results.length) {
     box.innerHTML = diag + `<div class="empty">该时间范围内未检索到匹配的论文/资讯。<br>可尝试：放宽「时间范围」到 14/30 天，或更换关键词。<br>若下方有 ✗ 源，说明对应渠道当前不可用（多为网络/代理限制或源失效）。</div>`;
+    radarSel.clear();
+    refreshRadarBulk();          // 工具条常驻，只是按钮置灰
     return;
   }
   box.innerHTML = diag;
   if (r.type === "news") {
     box.innerHTML = `<div class="news-feed">` + r.results.map((it, i) => `
       <div class="news-item">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" data-sel="${i}" ${it.in_library?"disabled":"checked"}>
+            <span class="muted" style="font-size:12px">选择</span></label>
+        </div>
         <h4>${esc(it.title)}</h4>
         <div class="src">${esc(it.source || "—")} · ${esc(it.published || "")} ${it.github?`· <a href="${it.github}" target="_blank">GitHub</a>`:""}</div>
         <div class="toolbar" style="margin-top:6px"><a class="btn sm" href="${esc(it.url)}" target="_blank">查看原文</a>
@@ -552,8 +890,10 @@ function renderRadar(r) {
     box.innerHTML = `<div class="paper-list">` + r.results.map((it, i) => `
       <div class="paper-card">
         <h4>${esc(it.title)}</h4>
-        <div class="meta">${it.category?`<span class="tag">${esc(it.category)}</span>`:""}
-          ${it.in_library?"<span class='badge read'>已在库</span>":"<span class='badge unread'>新发现</span>"}</div>
+        <div class="meta"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" data-sel="${i}" ${it.in_library?"disabled":"checked"}></label>
+          ${it.category?`<span class="tag">${esc(it.category)}</span>`:""}
+          <span class="${it.in_library?'badge read':'badge unread'}" data-badge="${i}">${it.in_library?"已在库":"新发现"}</span></div>
         <div class="meta" style="margin:6px 0">${esc((it.abstract||"").slice(0,160))}...</div>
         <div class="meta">${esc(it.published||"")} ${it.github?`· <a href="${it.github}" target="_blank">GitHub</a>`:""}</div>
         <div class="toolbar" style="margin-top:6px"><a class="btn sm" href="${esc(it.url)}" target="_blank">原文</a>
@@ -562,39 +902,196 @@ function renderRadar(r) {
   }
   $$("[data-paper]", box).forEach((b) => b.onclick = () => addRadarPaper(+b.dataset.paper, b));
   $$("[data-news]", box).forEach((b) => b.onclick = () => addRadarNews(+b.dataset.news, b));
+
+  // 批量入库：默认勾选所有未入库条目，已在库的禁用
+  radarSel.clear();
+  lastRadarItems.forEach((it, i) => { if (!it.in_library) radarSel.add(i); });
+  $$("[data-sel]", box).forEach((cb) => cb.onchange = () => {
+    const i = +cb.dataset.sel;
+    if (cb.checked) radarSel.add(i); else radarSel.delete(i);
+    refreshRadarBulk();
+  });
+  $("#radarBulkTip").textContent = "";
+  refreshRadarBulk();
+}
+
+// ---------- 批量入库：选中 → 工具条 ----------
+function refreshRadarBulk() {
+  const n = radarSel.size;
+  const hasItems = lastRadarItems.length > 0;
+  $("#radarSelCount").textContent = hasItems ? `已选 ${n} 条` : "未检索";
+  ["#btnSelAll", "#btnSelNone"].forEach((sel) => {
+    const b = $(sel);
+    if (b) b.disabled = !hasItems || radarBulkBusy;
+  });
+  const btn = $("#btnBulkAdd");
+  if (!btn) return;
+  btn.textContent = radarBulkBusy ? "入库中…" : `批量入库（${n}）`;
+  btn.disabled = radarBulkBusy || n === 0;
+}
+function radarPaperPayload(it) {
+  return { title: it.title, abstract: it.abstract || "", url: it.url,
+    github: it.github || "", field: it.field || "", arxiv_id: it.arxiv_id || "" };
+}
+function radarNewsPayload(it) {
+  return { title: it.title, url: it.url, source: it.source || "", published: it.published || "" };
+}
+/** 入库成功后把卡片标记为「已在库」，并取消勾选 + 禁用复选框 */
+function markRadarInLibrary(indices) {
+  const box = $("#radarResults");
+  indices.forEach((i) => {
+    if (!lastRadarItems[i]) return;
+    lastRadarItems[i].in_library = true;
+    radarSel.delete(i);
+    const cb = $(`[data-sel="${i}"]`, box);
+    if (cb) { cb.checked = false; cb.disabled = true; }
+    const badge = $(`[data-badge="${i}"]`, box);
+    if (badge) { badge.className = "badge read"; badge.textContent = "已在库"; }
+    const b = $(`[data-paper="${i}"]`, box) || $(`[data-news="${i}"]`, box);
+    if (b) { b.textContent = "已加入"; b.disabled = true; }
+  });
+  refreshRadarBulk();
+}
+$("#btnSelAll").onclick = () => {
+  lastRadarItems.forEach((it, i) => { if (!it.in_library) radarSel.add(i); });
+  $$("[data-sel]", $("#radarResults")).forEach((cb) => { if (!cb.disabled) cb.checked = true; });
+  refreshRadarBulk();
+};
+$("#btnSelNone").onclick = () => {
+  radarSel.clear();
+  $$("[data-sel]", $("#radarResults")).forEach((cb) => { cb.checked = false; });
+  refreshRadarBulk();
+};
+$("#btnBulkAdd").onclick = async () => {
+  if (radarBulkBusy) return;
+  const idx = [...radarSel].sort((a, b) => a - b).filter((i) => lastRadarItems[i]);
+  if (!idx.length) return toast("请先勾选要入库的条目");
+  const isNews = lastRadarType === "news";
+  radarBulkBusy = true;
+  const tip = $("#radarBulkTip");
+  refreshRadarBulk();
+  try {
+    if (isNews) {
+      const r = await api("/news/bulk", { method: "POST", body: { items: idx.map((i) => radarNewsPayload(lastRadarItems[i])) } });
+      markRadarInLibrary(idx);
+      loadNews();
+      toast(`批量加入资讯库 ${r.added} 条（共 ${r.total} 条）`);
+    } else {
+      const r = await api("/papers/from_radar", { method: "POST", body: idx.map((i) => radarPaperPayload(lastRadarItems[i])) });
+      const ids = Array.isArray(r.ids) ? r.ids : [];
+      markRadarInLibrary(idx);
+      loadStats();
+      const s = await afterRadarAdd(ids, $("#radarBulkTip"));
+      if (s) toast(`批量收录 ${r.created} 篇；抓取资源 成功 ${s.ok} / 失败 ${s.failed} / 跳过 ${s.skipped}`);
+      else toast(`批量收录 ${r.created} 篇`);
+    }
+    tip.textContent = "";
+  } catch (e) {
+    toast(`批量入库失败：${e.message}`);
+    tip.textContent = "";
+  } finally {
+    radarBulkBusy = false;
+    refreshRadarBulk();
+  }
+};
+/**
+ * 串行抓取新增论文的 PDF + tex 源码。
+ * 一篇 = 下载 PDF + 源码包 + 解压 + 多次上传，很慢；且 IMA 上传并发稍高就被限流
+ * （实测 8 并发会 403），所以严格串行，单篇失败不中断整体。
+ */
+/**
+ * 串行抓取新增论文的 PDF + tex 源码并上传 IMA。
+ * 一篇 = 下载 PDF + 源码包 + 解压 + 多次上传，很慢；且 IMA 上传并发稍高就被限流
+ * （实测 8 并发会 403），所以严格串行，单篇失败不中断整体。
+ */
+async function fetchRadarAssets(ids, tipEl) {
+  const tip = tipEl || $("#radarBulkTip");
+  let ok = 0, failed = 0, skipped = 0;
+  for (let k = 0; k < ids.length; k++) {
+    const pid = ids[k];
+    if (tip) tip.textContent = `正在抓取并上传 ${k + 1}/${ids.length} …`;
+    try {
+      const p = await api("/papers/" + pid);
+      if (!(p && p.arxiv_id)) { skipped++; continue; }   // 没有 arXiv ID 直接跳过
+      await api(`/papers/${pid}/fetch_assets`, { method: "POST" });
+      ok++;
+    } catch (e) {
+      failed++;
+      console.warn("fetch_assets failed:", pid, e.message);
+    }
+  }
+  if (tip) tip.textContent = "";
+  return { ok, failed, skipped };
+}
+/** 入库 +（可选）抓资源，三条入库路径共用 */
+async function afterRadarAdd(ids, tipEl) {
+  if (!wantFetchAssets()) return null;
+  if (!ids || !ids.length) return null;
+  const s = await fetchRadarAssets(ids, tipEl);
+  loadImaPaths();
+  return s;
 }
 async function addRadarPaper(i, btn) {
   const it = lastRadarItems[i];
-  const payload = [{ title: it.title, abstract: it.abstract || "", url: it.url, github: it.github || "", field: it.field || "", arxiv_id: it.arxiv_id || "" }];
-  const r = await api("/papers/from_radar", { method: "POST", body: payload });
-  toast(`已收录 ${r.created} 篇`);
-  btn.textContent = "已加入"; btn.disabled = true;
-  loadStats();
+  const label = btn ? btn.textContent.trim() : "";
+  if (btn) { btn.disabled = true; btn.textContent = "收录中…"; }
+  try {
+    const r = await api("/papers/from_radar", { method: "POST", body: [radarPaperPayload(it)] });
+    markRadarInLibrary([i]);
+    loadStats();
+    const ids = Array.isArray(r.ids) ? r.ids : [];
+    const s = await afterRadarAdd(ids, $("#radarBulkTip"));
+    if (s) toast(`已收录 ${r.created} 篇；抓取资源 成功 ${s.ok} / 失败 ${s.failed} / 跳过 ${s.skipped}`);
+    else toast(`已收录 ${r.created} 篇`);
+    if (btn) { btn.textContent = "已加入"; }
+  } catch (e) {
+    toast(`收录失败：${e.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = "重试加入"; }
+  }
 }
 async function addRadarNews(i, btn) {
   const it = lastRadarItems[i];
-  const r = await api("/news", { method: "POST", body: {
-    title: it.title, url: it.url, source: it.source || "", published: it.published || "",
-  }});
-  toast("已加入资讯库");
-  btn.textContent = "已加入"; btn.disabled = true;
-  loadNews();
+  try {
+    await api("/news", { method: "POST", body: radarNewsPayload(it) });
+    toast("已加入资讯库");
+    markRadarInLibrary([i]);
+    loadNews();
+  } catch (e) {
+    toast(`加入失败：${e.message}`);
+    btn.disabled = false; btn.textContent = "重试加入";
+  }
 }
 $("#btnAddAll").onclick = async () => {
   if (!lastRadarItems.length) return toast("请先运行检索");
-  if (lastRadarType === "news") {
-    const items = lastRadarItems.map((it) => ({
-      title: it.title, url: it.url, source: it.source || "", published: it.published || "",
-    }));
-    const r = await api("/news/bulk", { method: "POST", body: { items } });
-    toast(`批量加入资讯库 ${r.added} 条（共 ${r.total} 条）`); loadNews();
-  } else {
-    const payload = lastRadarItems.map((it) => ({
-      title: it.title, abstract: it.abstract || "", url: it.url,
-      github: it.github || "", field: it.field || "", arxiv_id: it.arxiv_id || "",
-    }));
-    const r = await api("/papers/from_radar", { method: "POST", body: payload });
-    toast(`批量收录 ${r.created} 篇`); loadStats();
+  if (radarBulkBusy) return;
+  const idx = lastRadarItems.map((_, i) => i);
+  const btn = $("#btnAddAll");
+  radarBulkBusy = true;
+  if (btn) btn.disabled = true;
+  refreshRadarBulk();
+  try {
+    if (lastRadarType === "news") {
+      const items = lastRadarItems.map((it) => radarNewsPayload(it));
+      const r = await api("/news/bulk", { method: "POST", body: { items } });
+      markRadarInLibrary(idx);
+      loadNews();
+      toast(`批量加入资讯库 ${r.added} 条（共 ${r.total} 条）`);
+    } else {
+      const payload = lastRadarItems.map((it) => radarPaperPayload(it));
+      const r = await api("/papers/from_radar", { method: "POST", body: payload });
+      const ids = Array.isArray(r.ids) ? r.ids : [];
+      markRadarInLibrary(idx);
+      loadStats();
+      const s = await afterRadarAdd(ids, $("#radarBulkTip"));
+      if (s) toast(`批量收录 ${r.created} 篇；抓取资源 成功 ${s.ok} / 失败 ${s.failed} / 跳过 ${s.skipped}`);
+      else toast(`批量收录 ${r.created} 篇`);
+    }
+  } catch (e) {
+    toast(`批量入库失败：${e.message}`);
+  } finally {
+    radarBulkBusy = false;
+    if (btn) btn.disabled = false;
+    refreshRadarBulk();
   }
 };
 
@@ -745,4 +1242,7 @@ $("#btnAuthFeishu").onclick = async () => {
 };
 
 // ============ 启动 ============
+initFetchAssetsPref();
+initLlmReady();        // 查大模型配置：没配置则禁用「生成中文版」按钮
+refreshRadarBulk();   // 未检索时把批量工具条置灰
 loadStats();

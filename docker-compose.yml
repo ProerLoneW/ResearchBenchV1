@@ -1,0 +1,49 @@
+# AI 科研论文工作台 —— 一键部署编排
+#
+# 用法：
+#   1) cp .env.example .env  &&  编辑 .env（重点：ADMIN_PASSWORD、HOST_PORT）
+#   2) docker compose up -d --build   （或直接用 ./deploy.sh）
+#
+# 说明见 README「部署到服务器 / 本地 HTML 调用远程服务」一节。
+services:
+  researchbench:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: researchbench:latest
+    container_name: researchbench
+
+    # 从 .env 读取：ADMIN_PASSWORD / ALLOW_ORIGINS / RADAR_PROXY 等（默认值见 .env.example）
+    env_file:
+      - .env
+    environment:
+      # 容器内监听端口（宿主端口由 ${HOST_PORT} 控制，默认 8765）
+      PORT: "8765"
+      TZ: Asia/Shanghai
+
+    ports:
+      - "${HOST_PORT:-8765}:8765"
+
+    # 数据持久化：SQLite 数据库、飞书 token、密钥、TeX 仓库都在 ./data
+    volumes:
+      - ./data:/app/data
+
+    # 容器默认以 root 运行会把挂载目录里的文件改成 root 属主。
+    # 这里用当前宿主的 UID/GID 起容器（deploy.sh 会自动 export）。
+    # 若你的 shell 没有 UID/GID 变量，可写成固定值，例如 "1000:1000"；
+    # 已经产生 root 属主文件时，执行一次：sudo chown -R $USER ./data
+    user: "${UID:-10001}:${GID:-10001}"
+
+    # 让容器能访问宿主上的代理（例如本机 127.0.0.1:52129 的翻墙代理），
+    # 供 RADAR_PROXY=http://host.docker.internal:52129 使用。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

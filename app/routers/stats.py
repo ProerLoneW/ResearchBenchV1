@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..models import Paper, Field, UserPrefs
+from ..models import UserPrefs
+from ..services import ima_store
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -41,8 +42,8 @@ def get_stats(db: Session = Depends(get_db)):
     month_start = datetime(today.year, today.month, 1)
     week_ago = now - timedelta(days=7)
 
-    papers = db.query(Paper).all()
-    fields = {f.id: f.name for f in db.query(Field).all()}
+    # 论文数据来自 IMA 知识库（ima_store 带本地派生缓存）
+    papers = ima_store.papers.all()
 
     read_dates = set()
     read_per_day = Counter()   # 每天实际阅读篇数（用于趋势图，避免同日多读被 set 去重成 1）
@@ -52,7 +53,7 @@ def get_stats(db: Session = Depends(get_db)):
     read_c = unread_c = reading_c = 0
 
     for p in papers:
-        st = p.reading_status or "unread"
+        st = p.get("reading_status") or "unread"
         if st == "read":
             read_c += 1
         elif st == "reading":
@@ -60,8 +61,8 @@ def get_stats(db: Session = Depends(get_db)):
         else:
             unread_c += 1
 
-        if p.read_at:
-            rd = p.read_at.date()
+        if p.get("read_at"):
+            rd = p["read_at"].date()
             read_dates.add(rd)
             read_per_day[rd] += 1
             if rd == today:
@@ -70,12 +71,9 @@ def get_stats(db: Session = Depends(get_db)):
                 week_c += 1
             if rd >= month_start.date():
                 month_c += 1
-            if p.field_id:
-                field_counter[fields.get(p.field_id, "未分类")] += 1
-            else:
-                field_counter["未分类"] += 1
+            field_counter[p.get("field_name") or "未分类"] += 1
 
-        if p.created_at and p.created_at >= week_ago:
+        if p.get("created_at") and p["created_at"] >= week_ago:
             new_c += 1
 
     # 连续阅读天数

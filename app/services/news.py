@@ -268,12 +268,23 @@ def _parse_rss_items(raw: str, days: int, keyword_filter=None, source_hint=None,
 
 
 async def fetch_news(keywords: str, days: int = 2, max_results: int = 30,
-                     lang: str = "en", channel: str = "google"):
+                     lang: str = "en", channel: str = "google",
+                     progress=None):
     """
     资讯检索主入口（多源并行）。
     channel: google=仅 Google News；cn=国内媒体+公众号；all=全部合并。
     返回 {results, sources}：sources 含每个渠道的成功/失败诊断。
+
+    progress: 可选回调 (stage, status, detail)，stage ∈ google / rss / wx，
+    供后台任务逐源上报步骤进度；不传则行为与原来完全一致。
     """
+    def _report(stage: str, status: str, detail: str = ""):
+        if progress:
+            try:
+                progress(stage, status, detail)
+            except Exception:
+                pass                                   # 进度上报失败不影响检索
+
     collected, sources = [], []
     seen = set()
     seen_titles = set()
@@ -297,12 +308,15 @@ async def fetch_news(keywords: str, days: int = 2, max_results: int = 30,
         return ok
 
     if channel in ("google", "all"):
+        _report("google", "running")
         items, err = await _fetch_google_news(keywords, days, max_results, lang=lang)
         ok = await _drain(items, "Google News")
         sources.append({"name": "Google News", "ok": ok,
                         "status": "ok" if not err else "error", "detail": err or f"命中 {ok} 条"})
+        _report("google", "ok" if not err else "error", err or f"命中 {ok} 条")
 
     if channel in ("cn", "all"):
+        _report("rss", "running")
         items, errors = await _fetch_cn_rss(keywords, days, max_results)
         ok = await _drain(items, "国内媒体 RSS")
         if errors:
@@ -310,8 +324,11 @@ async def fetch_news(keywords: str, days: int = 2, max_results: int = 30,
                 sources.append({"name": e.split("：")[0], "ok": 0, "status": "error", "detail": e})
         else:
             sources.append({"name": "国内媒体 RSS", "ok": ok, "status": "ok", "detail": f"命中 {ok} 条"})
+        _report("rss", "ok" if not errors else "error",
+                f"命中 {ok} 条" if not errors else "；".join(errors)[:200])
 
         # 微信公众号（RSSHub）
+        _report("wx", "running")
         witems, werrors = await _fetch_wechat_rsshub(keywords, days, max_results)
         wok = await _drain(witems, "微信公众号")
         if werrors:
@@ -319,6 +336,8 @@ async def fetch_news(keywords: str, days: int = 2, max_results: int = 30,
                 sources.append({"name": e.split("：")[0], "ok": 0, "status": "error", "detail": e})
         else:
             sources.append({"name": "微信公众号", "ok": wok, "status": "ok", "detail": f"命中 {wok} 条"})
+        _report("wx", "ok" if not werrors else "error",
+                f"命中 {wok} 条" if not werrors else "；".join(werrors)[:200])
 
     # 按时间倒序
     collected.sort(key=lambda x: _parse_pubdate(x.get("published", "")) or datetime.min, reverse=True)

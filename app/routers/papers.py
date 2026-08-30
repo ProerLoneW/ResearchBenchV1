@@ -14,14 +14,19 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..config import DATA_DIR
-from ..models import Paper, Field
+from ..models import Paper
 from ..services.metadata import fetch_metadata
 from ..services.feishu import FeishuClient
+from ..services.ima_client import IMAError
+from ..services import ima_store
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent  # 项目根目录
 TEX_REPOS_DIR = DATA_DIR / "tex_repos"
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
+
+# 数据源已切到 IMA 知识库；本地 SQLite 只是 ima_store 的派生缓存，
+# 除 TeX/飞书相关接口（仍按原样走本地文件）外，读写一律走 ima_store。
 
 
 class PaperCreate(BaseModel):
@@ -66,6 +71,11 @@ class PaperOut(BaseModel):
     reading_status: str
     arxiv_id: str
     source: str
+    # IMA 知识库里的资产位置（是否已有原文 PDF / LaTeX 源码 / 中文版）。
+    # 前端靠它们判断要不要显示「抓取 PDF 与源码」的重试入口。
+    ima_pdf_path: str = ""
+    ima_tex_path: str = ""
+    ima_zh_pdf_path: str = ""
     favorited_at: Optional[datetime]
     read_at: Optional[datetime]
     created_at: Optional[datetime]
@@ -74,9 +84,21 @@ class PaperOut(BaseModel):
 
 
 def _serialize(p: Paper, field_name: Optional[str]) -> dict:
+    """仅 TeX / 飞书相关接口仍在使用本地 ORM 对象，其余改走 ima_store。"""
     d = PaperOut.model_validate(p).model_dump()
     d["field_name"] = field_name
     return d
+
+
+def _stale_note() -> dict:
+    """IMA 不可用时带上降级提示。额外字段不影响既有分页结构。"""
+    st = ima_store.papers.state
+    if not st.stale:
+        return {}
+    return {
+        "stale": True,
+        "warning": "IMA 知识库暂时不可用，当前展示的是本地缓存快照，数据可能不是最新。",
+    }
 
 
 @router.get("")
@@ -87,39 +109,13 @@ def list_papers(
     tag: Optional[str] = None,
     page: int = 1,
     page_size: int = 12,
-    db: Session = Depends(get_db),
 ):
-    page = max(1, page)
-    page_size = max(1, min(100, page_size))
-    query = db.query(Paper)
-    if field_id is not None:
-        query = query.filter(Paper.field_id == field_id)
-    if status:
-        query = query.filter(Paper.reading_status == status)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (Paper.title.ilike(like)) | (Paper.abstract.ilike(like))
-            | (Paper.summary.ilike(like)) | (Paper.tags.ilike(like))
-        )
-    if tag:
-        query = query.filter(Paper.tags.ilike(f"%{tag}%"))
-    total = query.count()
-    pages = (total + page_size - 1) // page_size if total else 0
-    papers = (
-        query.order_by(Paper.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
+    result = ima_store.papers.list(
+        query=q or "", page=page, page_size=page_size,
+        field_id=field_id, status=status, tag=tag,
     )
-    fields = {f.id: f.name for f in db.query(Field).all()}
-    return {
-        "items": [_serialize(p, fields.get(p.field_id)) for p in papers],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "pages": pages,
-    }
+    result.update(_stale_note())
+    return result
 
 
 @router.get("/fetch_metadata")
@@ -137,88 +133,85 @@ async def fetch_meta_get(url: str = ""):
 
 
 @router.get("/{pid}", response_model=PaperOut)
-def get_paper(pid: int, db: Session = Depends(get_db)):
-    p = db.query(Paper).filter(Paper.id == pid).first()
+def get_paper(pid: int):
+    p = ima_store.papers.get(pid)
     if not p:
         raise HTTPException(404, "论文不存在")
-    field = db.query(Field).filter(Field.id == p.field_id).first()
-    return _serialize(p, field.name if field else None)
+    return PaperOut.model_validate(p)
 
 
 @router.post("", response_model=PaperOut)
-async def create_paper(payload: PaperCreate, db: Session = Depends(get_db)):
+def create_paper(payload: PaperCreate):
     if not payload.title.strip():
         raise HTTPException(400, "标题不能为空")
-    p = Paper(**payload.model_dump())
-    if payload.reading_status == "read" and not p.read_at:
-        p.read_at = datetime.now()
-    if not p.favorited_at:
-        p.favorited_at = datetime.now()
-    db.add(p); db.commit(); db.refresh(p)
-    field = db.query(Field).filter(Field.id == p.field_id).first()
-    return _serialize(p, field.name if field else None)
+    try:
+        rec = ima_store.papers.create(payload.model_dump())
+    except IMAError as e:
+        raise HTTPException(502, f"写入 IMA 失败：{e}")
+    return PaperOut.model_validate(rec)
 
 
 @router.put("/{pid}", response_model=PaperOut)
-def update_paper(pid: int, payload: PaperUpdate, db: Session = Depends(get_db)):
-    p = db.query(Paper).filter(Paper.id == pid).first()
-    if not p:
-        raise HTTPException(404, "论文不存在")
+def update_paper(pid: int, payload: PaperUpdate):
     data = payload.model_dump(exclude_unset=True)
-    if "reading_status" in data and data["reading_status"] == "read" and not p.read_at:
-        p.read_at = datetime.now()
-    for k, v in data.items():
-        setattr(p, k, v)
-    db.commit(); db.refresh(p)
-    field = db.query(Field).filter(Field.id == p.field_id).first()
-    return _serialize(p, field.name if field else None)
+    # tex_repo_path 是本地文件系统路径，IMA 侧不落盘（TeX/飞书功能仍走本地文件）
+    data.pop("tex_repo_path", None)
+    try:
+        rec = ima_store.papers.update(pid, data)
+    except IMAError as e:
+        raise HTTPException(502, f"写入 IMA 失败：{e}")
+    if not rec:
+        raise HTTPException(404, "论文不存在")
+    return PaperOut.model_validate(rec)
 
 
 @router.delete("/{pid}")
-def delete_paper(pid: int, db: Session = Depends(get_db)):
-    p = db.query(Paper).filter(Paper.id == pid).first()
-    if not p:
+def delete_paper(pid: int):
+    # IMA 没有删除接口，只能重命名加【已删除】前缀，由读取侧过滤
+    if not ima_store.papers.soft_delete(pid):
         raise HTTPException(404, "论文不存在")
-    db.delete(p); db.commit()
     return {"ok": True}
 
 
 @router.post("/from_radar")
-async def add_from_radar(items: list[dict], db: Session = Depends(get_db)):
-    """Research Radar 结果一键收录（去重）。"""
+def add_from_radar(items: list[dict]):
+    """
+    Research Radar 结果一键收录（去重）。
+
+    除原有的 created 外，额外返回 ids（新增论文的 id 列表，顺序与写入顺序一致），
+    供前端在勾选「同时抓取 PDF 与源码」时逐篇调用 /api/papers/{pid}/fetch_assets。
+    ids 是纯增量字段，不影响既有的只依赖 created 的调用方。
+    """
     created = 0
-    for it in items:
-        url = (it.get("url") or "").strip()
-        aid = (it.get("arxiv_id") or "").strip()
-        exists = None
-        if aid:
-            exists = db.query(Paper).filter(Paper.arxiv_id == aid).first()
-        if not exists and url:
-            exists = db.query(Paper).filter(Paper.original_url == url).first()
-        if exists:
-            continue
-        title = it.get("title", "未命名")
-        field_name = it.get("field") or ""
-        field_id = None
-        if field_name:
-            f = db.query(Field).filter(Field.name == field_name).first()
-            if not f:
-                f = Field(name=field_name); db.add(f); db.commit(); db.refresh(f)
-            field_id = f.id
-        p = Paper(
-            title=title,
-            abstract=it.get("abstract", ""),
-            field_id=field_id,
-            original_url=url,
-            github_url=it.get("github", ""),
-            arxiv_id=aid,
-            source="radar",
-            reading_status="unread",
-            favorited_at=datetime.now(),
-        )
-        db.add(p); created += 1
-    db.commit()
-    return {"created": created}
+    ids: list[int] = []
+    try:
+        for it in items:
+            url = (it.get("url") or "").strip()
+            aid = (it.get("arxiv_id") or "").strip()
+            if ima_store.papers.find_duplicate(arxiv_id=aid, url=url):
+                continue
+            field_id = None
+            field_name = (it.get("field") or "").strip()
+            if field_name:
+                f = ima_store.fields.get_or_create(field_name)
+                field_id = f["id"] if f else None
+            rec = ima_store.papers.create({
+                "title": it.get("title", "未命名"),
+                "abstract": it.get("abstract", ""),
+                "field_id": field_id,
+                "original_url": url,
+                "github_url": it.get("github", ""),
+                "arxiv_id": aid,
+                "source": "radar",
+                "reading_status": "unread",
+            })
+            created += 1
+            pid = rec.get("id") if isinstance(rec, dict) else None
+            if pid is not None:
+                ids.append(pid)
+    except IMAError as e:
+        raise HTTPException(502, f"写入 IMA 失败：{e}")
+    return {"created": created, "ids": ids}
 
 
 class GenerateFeishuIn(BaseModel):
