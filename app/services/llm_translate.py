@@ -25,12 +25,13 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import httpx
 
-from ..config import decrypt_secret
+from ..config import decrypt_secret, MAX_CONCURRENT_TRANSLATIONS
 from ..db import SessionLocal
 from . import translate_task
 from .translate_task import TaskError, _update_task, fail_task, get_task
@@ -40,6 +41,9 @@ logger = logging.getLogger(__name__)
 # 运行中的任务（task_id -> Thread），防止同一任务被启动两次
 _RUNNING: Dict[str, threading.Thread] = {}
 _RUNNING_LOCK = threading.Lock()
+
+# 并发槽位：同时执行的翻译线程数上限。超出则进入「排队中」，等槽位空出再跑。
+_CONC_SEM = threading.Semaphore(MAX_CONCURRENT_TRANSLATIONS)
 
 # 分块翻译参数：块太小请求数暴涨、太大会超 max_tokens / 上下文
 CHUNK_TARGET_CHARS = 4000
@@ -217,6 +221,13 @@ def _validate_chunk(src: str, out: str) -> Optional[str]:
         return f"环境开始标记数量不符（源 {sb} / 译文 {ob}）"
     if oe > se + 1 or oe < se - 1:
         return f"环境结束标记数量不符（源 {se} / 译文 {oe}）"
+    # 译文是否真的译成了中文？推理模型（MiniMax-M3 / DeepSeek-R1 等）偶尔会
+    # 把英文原文直接回吐，而英文回文在上面的检查里全部通过，会静默漏进 PDF。
+    # 加一道"译文含中文比例"闸：源片段英文足够多、而译文几乎无中文 → 判为未翻译。
+    src_alpha = sum(1 for c in src if c.isascii() and c.isalpha())
+    out_cjk = sum(1 for c in out if "一" <= c <= "鿿")
+    if src_alpha >= 120 and out_cjk < src_alpha * 0.15:
+        return f"译文几乎不含中文（源英文 {src_alpha} 字 / 译文中文 {out_cjk} 字），疑似未翻译"
     return None
 
 
@@ -386,12 +397,19 @@ def _translate_file(path: Path, key: str, conf: dict, steps: List[dict],
         _step(steps, key, "running", f"第 {ci}/{len(chunks)} 块")
         _put_steps(task_id, steps, _progress_pct(steps))
         translated, why = None, ""
+        reinforced = False
         for attempt in range(LLM_RETRIES + 1):
+            user_msg = chunk
+            if reinforced:
+                user_msg = chunk + (
+                    "\n\n【强制要求】必须逐句把上面的英文翻译成中文，"
+                    "绝对禁止保留任何英文原文（专业术语可在中文后加括号注英文缩写）。"
+                    "只输出翻译后的 LaTeX 片段本身。")
             try:
                 raw = _chat_sync(
                     conf,
                     [{"role": "system", "content": SYSTEM_PROMPT},
-                     {"role": "user", "content": chunk}],
+                     {"role": "user", "content": user_msg}],
                     max_tokens=LLM_MAX_TOKENS)
             except Exception as exc:
                 why = f"调用失败：{exc}"
@@ -401,6 +419,9 @@ def _translate_file(path: Path, key: str, conf: dict, steps: List[dict],
                 translated = raw
                 break
             why = bad
+            # 疑似"未翻译"（模型回英文）时，下一轮用强化提示再试一次
+            if bad.startswith("译文几乎不含中文") and not reinforced and attempt < LLM_RETRIES:
+                reinforced = True
         if translated is None:
             # 兜底：模型这块不可信时保留英文原文，宁可漏翻也不能毁掉编译
             translated = chunk
@@ -425,6 +446,16 @@ def _translate_file(path: Path, key: str, conf: dict, steps: List[dict],
                   "；".join(degraded[:3]) + ("…" if len(degraded) > 3 else "") + "）"
     _step(steps, key, "ok", detail)
     _put_steps(task_id, steps, _progress_pct(steps))
+
+    # 落盘：把降级（未译/校验未过）原因写到任务目录，重启后也能查。
+    try:
+        log_path = path.parent.parent / "translate.log"
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {path.name}: {detail}\n")
+            for d in degraded:
+                fh.write(f"    - {d}\n")
+    except Exception:
+        pass
 
 
 # ===========================================================================
@@ -501,6 +532,14 @@ def start_task(task_id: str) -> bool:
 
 
 def _worker(task_id: str) -> None:
+    # 先尝试非阻塞拿一个并发槽位；拿不到就标记「排队中」，再阻塞等待。
+    if not _CONC_SEM.acquire(blocking=False):
+        try:
+            _update_task(task_id, status="queued",
+                         reason="并发任务较多，排队等待空闲槽位")
+        except Exception:
+            pass
+        _CONC_SEM.acquire()  # 阻塞直到有槽位
     try:
         run_task(task_id)
     except Exception as exc:
@@ -510,6 +549,8 @@ def _worker(task_id: str) -> None:
             fail_task(task_id, f"内部错误：{type(exc).__name__}: {exc}")
         except Exception:
             pass
+    finally:
+        _CONC_SEM.release()
 
 
 def _full_task(task_id: str) -> Optional[dict]:
@@ -611,10 +652,35 @@ def _mark_failed(task_id: str, steps: List[dict], reason: str) -> None:
         pass
 
 
-def is_running_for_pid(pid: int) -> bool:
-    """该论文是否已有自动翻译任务在跑（防重复启动）。"""
+def mark_stale_running_failed() -> int:
+    """
+    服务重启后把残留的 running 任务标成 failed。
+
+    自动翻译跑在后台线程里，进程一停线程就没了，任务会永远停在
+    "翻译中"。启动时扫一遍把它们收尾，避免任务窗口出现假进行中。
+    """
+    n = 0
     for t in list(_load_state_tasks()):
-        if (t.get("pid") == int(pid) and t.get("status") == "running"
+        if t.get("status") not in ("running", "queued"):
+            continue
+        tid = t.get("task_id")
+        with _RUNNING_LOCK:
+            th = _RUNNING.get(tid)
+        if th and th.is_alive():
+            continue
+        try:
+            fail_task(tid, "服务重启，任务被中断（可重新发起翻译）")
+            n += 1
+        except Exception:
+            pass
+    return n
+
+
+def is_running_for_pid(pid: int) -> bool:
+    """该论文是否已有自动翻译任务在跑或排队（防重复启动）。"""
+    for t in list(_load_state_tasks()):
+        if (t.get("pid") == int(pid)
+                and t.get("status") in ("running", "queued")
                 and t.get("mode") == "auto"):
             tid = t.get("task_id")
             with _RUNNING_LOCK:

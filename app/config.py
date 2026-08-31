@@ -2,6 +2,7 @@
 全局配置：路径、密钥、飞书参数。
 所有敏感/可变的配置集中在此，便于后台设置页面复用。
 """
+import json
 import os
 from pathlib import Path
 
@@ -55,24 +56,143 @@ def decrypt_secret(token: str) -> str:
 # 也可在「设置」页填写并保存到 data/radar_proxy.txt。
 _RADAR_PROXY_FILE = DATA_DIR / "radar_proxy.txt"
 
+def _set_env_proxy(proxy: str) -> None:
+    """把代理同步到环境变量，让 httpx 默认 trust_env 能读到。"""
+    if proxy:
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            os.environ[k] = proxy
+    else:
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            os.environ.pop(k, None)
+
+
 def _load_radar_proxy() -> str:
     env = os.getenv("RADAR_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY") or ""
     if _RADAR_PROXY_FILE.exists():
         saved = _RADAR_PROXY_FILE.read_text(encoding="utf-8").strip()
         if saved:
+            _set_env_proxy(saved)
             return saved
     return env
 
 RADAR_PROXY = _load_radar_proxy()
 
 def save_radar_proxy(proxy: str) -> None:
-    """保存 Radar 代理地址到本地文件（非敏感信息）。"""
+    """保存 Radar 代理地址到本地文件（非敏感信息），并同步到环境变量。"""
     global RADAR_PROXY
     RADAR_PROXY = proxy.strip()
+    _set_env_proxy(RADAR_PROXY)
     if RADAR_PROXY:
         _RADAR_PROXY_FILE.write_text(RADAR_PROXY, encoding="utf-8")
     elif _RADAR_PROXY_FILE.exists():
         _RADAR_PROXY_FILE.unlink()
+
+
+# ---------- IMA 知识库凭证（存储后端，敏感）----------
+# 优先级（在 app/services/ima_client.py 中聚合）：
+#   显式传入 > 环境变量 > 本文件持久化的 data/ima_creds.json。
+# 环境变量名为 IMA_OPENAPI_CLIENTID / IMA_OPENAPI_APIKEY / IMA_KB_ID
+# （兼容旧的 Client_ID / API_KEY / IMA_CLIENT_ID / IMA_API_KEY）。
+# 服务器部署没有 .env 时，可在「设置」页填写，落到 data/ima_creds.json
+# （该目录已被 .gitignore 忽略，不会入库）。
+_IMA_CREDS_FILE = DATA_DIR / "ima_creds.json"
+
+
+def load_ima_creds() -> dict:
+    """返回已持久化的 IMA 凭证 {client_id, api_key, kb_id}（缺省为空）。"""
+    if _IMA_CREDS_FILE.exists():
+        try:
+            d = json.loads(_IMA_CREDS_FILE.read_text(encoding="utf-8") or "{}")
+            return {
+                "client_id": str(d.get("client_id") or ""),
+                "api_key": str(d.get("api_key") or ""),
+                "kb_id": str(d.get("kb_id") or ""),
+            }
+        except Exception:
+            return {"client_id": "", "api_key": "", "kb_id": ""}
+    return {"client_id": "", "api_key": "", "kb_id": ""}
+
+
+# 各凭证对应的环境变量名（按优先级）。与 ima_client.IMAClient 解析顺序保持一致，
+# 这样「设置页」展示的来源才能反映运行时真实生效的来源。
+_IMA_ENV_MAP = {
+    "client_id": ("IMA_OPENAPI_CLIENTID", "IMA_CLIENT_ID", "Client_ID"),
+    "api_key":   ("IMA_OPENAPI_APIKEY", "IMA_API_KEY", "API_KEY"),
+    "kb_id":     ("IMA_KB_ID",),
+}
+
+
+def resolve_ima_creds() -> dict:
+    """
+    返回 IMA 凭证的「有效值来源」，不回传明文。
+
+    解析优先级与 ima_client.IMAClient 一致：
+        环境变量 > data/ima_creds.json（设置页持久化文件）。
+    返回值（每个参数一个键，加统一前缀）：
+        {client_id_set, client_id_src, client_id_env,
+         api_key_set,   api_key_src,   api_key_env,
+         kb_id_set,     kb_id_src,     kb_id_env}
+    其中 *_src ∈ {"env", "settings", "none"}；*_env 记录命中的环境变量名
+    （仅变量名，不含值，可安全返回前端展示来源）。
+    """
+    file_creds = load_ima_creds()
+    out: Dict[str, object] = {}
+    for key, names in _IMA_ENV_MAP.items():
+        file_val = (file_creds.get(key) or "").strip()
+        env_val = None
+        env_name = None
+        for n in names:
+            v = os.getenv(n)
+            if v and v.strip():
+                env_val = v.strip()
+                env_name = n
+                break
+        if env_val:
+            out[f"{key}_set"] = True
+            out[f"{key}_src"] = "env"
+            out[f"{key}_env"] = env_name
+        elif file_val:
+            out[f"{key}_set"] = True
+            out[f"{key}_src"] = "settings"
+            out[f"{key}_env"] = ""
+        else:
+            out[f"{key}_set"] = False
+            out[f"{key}_src"] = "none"
+            out[f"{key}_env"] = ""
+    return out
+
+
+def save_ima_creds(client_id: str, api_key: str, kb_id: str) -> dict:
+    """保存 IMA 凭证到 data/ima_creds.json。
+
+    空字符串表示「不修改该项」（与 LLM 的 api_key 语义一致），
+    仅当填写了新值才覆盖，方便只改其中一项。返回保存后的完整凭证。
+    """
+    cur = load_ima_creds()
+    if client_id:
+        cur["client_id"] = client_id.strip()
+    if api_key:
+        cur["api_key"] = api_key.strip()
+    if kb_id:
+        cur["kb_id"] = kb_id.strip()
+    _IMA_CREDS_FILE.write_text(
+        json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.chmod(_IMA_CREDS_FILE, 0o600)
+    return cur
+
+
+
+# ---------- 设置页使用说明书（问号链接跳转地址） ----------
+# 留空则前端不显示「?」图标；填写飞书云文档/其他说明页地址。
+HELP_DOC_URL = os.getenv("SETTINGS_HELP_DOC_URL", "")
+
+
+# ---------- 翻译任务并发上限 ----------
+# 同时跑的后台翻译线程数上限（防止一次性发起大量任务把大模型 API / CPU 打满）。
+# 超出上限的任务进入「排队中」状态，等前一个槽位空出再开始。
+MAX_CONCURRENT_TRANSLATIONS = int(os.getenv("MAX_CONCURRENT_TRANSLATIONS", "3") or "3")
+if MAX_CONCURRENT_TRANSLATIONS < 1:
+    MAX_CONCURRENT_TRANSLATIONS = 1
 
 
 # ---------- arXiv 检索源（可切换，默认可直连镜像，无需代理）----------

@@ -33,7 +33,7 @@ except ImportError:  # 仅上传时需要
     CosConfig = None
     CosS3Client = None
 
-from ..config import DATA_DIR, BASE_DIR
+from ..config import DATA_DIR, BASE_DIR, load_ima_creds
 
 # 兼容 .env：按优先级尝试项目根目录与 ima-use-test/，缺失也不影响运行
 try:
@@ -106,11 +106,15 @@ class IMAClient:
         knowledge_base_id: Optional[str] = None,
         timeout: int = 60,
     ):
+        # 凭证来源优先级：显式传入 > 环境变量 > 持久化文件（data/ima_creds.json）。
+        # 这样服务器部署既可用环境变量注入，也可在「设置」页填写持久化。
+        _file = load_ima_creds()
         self.client_id = (
             client_id
             or os.getenv("IMA_OPENAPI_CLIENTID")
             or os.getenv("IMA_CLIENT_ID")
             or os.getenv("Client_ID")
+            or _file.get("client_id")
             or ""
         )
         self.api_key = (
@@ -118,17 +122,20 @@ class IMAClient:
             or os.getenv("IMA_OPENAPI_APIKEY")
             or os.getenv("IMA_API_KEY")
             or os.getenv("API_KEY")
+            or _file.get("api_key")
             or ""
         )
         self.knowledge_base_id = (
             knowledge_base_id
             or os.getenv("IMA_KB_ID")
+            or _file.get("kb_id")
             or ""
         )
         if not self.client_id or not self.api_key:
             raise IMAError(
-                "缺少 IMA 凭证。请设置环境变量 IMA_OPENAPI_CLIENTID / "
-                "IMA_OPENAPI_APIKEY（或在 .env / local_start.sh 中提供）。"
+                "缺少 IMA 凭证。请在「设置 → IMA 知识库凭证」页填写并保存"
+                "（写入 data/ima_creds.json，即时生效），或用环境变量注入"
+                " IMA_OPENAPI_CLIENTID / IMA_OPENAPI_APIKEY（兼容 Client_ID / API_KEY）。"
             )
         self.timeout = timeout
         self.session = requests.Session()

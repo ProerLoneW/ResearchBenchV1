@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from ..config import (
-    RADAR_PROXY, NEWS_LANGS, all_cn_rss,
+    NEWS_LANGS, all_cn_rss,
     RSSHUB_BASE, load_wechat_accounts,
 )
 
@@ -104,7 +104,7 @@ async def _fetch_google_news(keywords: str, days: int, max_results: int, lang: s
     for lg in order:
         params = _news_params(lg, q)
         try:
-            async with httpx.AsyncClient(timeout=30, headers=UA, proxy=RADAR_PROXY or None) as client:
+            async with httpx.AsyncClient(timeout=30, headers=UA, follow_redirects=True) as client:
                 resp = await client.get(NEWS_URL, params=params)
                 if resp.status_code == 429:
                     last_err = "Google News 返回 429（请求过于频繁，请稍后重试）"
@@ -149,7 +149,7 @@ async def _fetch_cn_rss(keywords: str, days: int, max_results: int):
     items, errors = [], []
     if not feeds:
         return items, ["未配置任何国内 RSS 源"]
-    async with httpx.AsyncClient(timeout=25, headers=UA, proxy=RADAR_PROXY or None) as client:
+    async with httpx.AsyncClient(timeout=25, headers=UA, follow_redirects=True) as client:
         for name, url in feeds:
             try:
                 resp = await client.get(url)
@@ -191,7 +191,7 @@ async def _fetch_wechat_rsshub(keywords: str, days: int, max_results: int):
         # 公共实例不稳定，先试探一次，避免每个账号都超时浪费时间
         pass
     kws = _split_keywords(keywords)
-    async with httpx.AsyncClient(timeout=25, headers=UA, proxy=RADAR_PROXY or None) as client:
+    async with httpx.AsyncClient(timeout=25, headers=UA, follow_redirects=True) as client:
         for name, gh in accounts:
             url = f"{RSSHUB_BASE}/wechat/mp/{gh}"
             try:

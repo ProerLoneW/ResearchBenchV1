@@ -4,10 +4,11 @@
 """
 import json
 
+import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..config import DATA_DIR, FEISHU_APP_ID, FEISHU_APP_SECRET
+from ..config import DATA_DIR, FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_BASE_URL
 from ..services.feishu import FeishuClient
 
 router = APIRouter(prefix="/api/feishu", tags=["feishu"])
@@ -57,3 +58,30 @@ def authorize():
     token = client.get_user_access_token()
     masked = token[:6] + "..." + token[-4:] if token else ""
     return {"ok": True, "token_masked": masked}
+
+
+@router.post("/test")
+def test_feishu():
+    """测试飞书应用凭证是否有效（只拿 app_access_token，不触发浏览器授权）。"""
+    fc = load_fc()
+    app_id = fc.get("app_id") or FEISHU_APP_ID
+    app_secret = fc.get("app_secret") or FEISHU_APP_SECRET
+    if not app_id:
+        return {"ok": False, "detail": "未配置 App ID"}
+    if not app_secret:
+        return {"ok": False, "detail": "未配置 App Secret"}
+    try:
+        resp = requests.post(
+            f"{FEISHU_BASE_URL}/auth/v3/app_access_token/internal",
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            json={"app_id": app_id, "app_secret": app_secret},
+            timeout=15,
+        )
+        data = resp.json() if resp.text else {}
+    except Exception as exc:
+        return {"ok": False, "detail": f"网络请求失败: {type(exc).__name__}: {exc}"}
+    if not resp.ok or data.get("code", 0) != 0:
+        msg = data.get("msg") or data.get("error") or f"HTTP {resp.status_code}"
+        return {"ok": False, "detail": msg}
+    exp = data.get("data", {}).get("expire") or data.get("expire")
+    return {"ok": True, "detail": f"凭证有效（tenant_access_token 已获取{exp and f'，有效期 {exp}s' or ''}）"}

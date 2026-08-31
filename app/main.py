@@ -87,7 +87,25 @@ def _startup():
             db.commit()
     finally:
         db.close()
+    _settle_stale_translate_tasks()
     _warm_ima_cache()
+
+
+def _settle_stale_translate_tasks():
+    """
+    把上次进程残留的"翻译中"任务收尾。
+
+    自动翻译跑在后台线程里，服务一停线程就没了，任务会永远停在 running
+    状态，任务窗口看起来像卡住。启动时统一标记为中断，用户可重新发起。
+    """
+    try:
+        from .services import llm_translate
+        n = llm_translate.mark_stale_running_failed()
+        if n:
+            print(f"[translate] 已将 {n} 个残留的翻译任务标记为中断")
+    except Exception as exc:
+        print(f"[translate] 收尾残留任务失败（不影响启动）: "
+              f"{type(exc).__name__}: {exc}")
 
 
 def _warm_ima_cache():

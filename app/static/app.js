@@ -83,35 +83,195 @@ $$("nav.tabs button").forEach((b) => {
 });
 
 // ============ 看板 ============
-let trendChart, fieldChart;
-async function loadStats() {
-  const s = await api("/stats");
-  $("#statCards").innerHTML = `
-    <div class="stat"><div class="n">${s.today_count}</div><div class="l">今日阅读</div><div class="sub">本周 ${s.week_count} 篇</div></div>
-    <div class="stat"><div class="n">${s.streak_days}</div><div class="l">连续阅读天数</div><div class="sub">坚持就是胜利 🔥</div></div>
-    <div class="stat"><div class="n">${s.read_count}</div><div class="l">已读论文</div><div class="sub">未读 ${s.unread_count} · 在读 ${s.reading_count}</div></div>
-    <div class="stat"><div class="n">${s.weekly_progress}<span style="font-size:15px;color:var(--muted)">/${s.weekly_goal}</span></div><div class="l">本周目标完成</div><div class="sub">近7天新增 ${s.new_count} 篇</div></div>`;
+let trendChart = null;
+let dashState = null;
+let trendRange = 30;
+let trendMetric = "count";
 
-  const dates = s.trend.map((t) => t.date);
-  const counts = s.trend.map((t) => t.count);
-  if (trendChart) trendChart.destroy();
-  trendChart = new Chart($("#trendChart"), {
-    type: "line",
-    data: { labels: dates, datasets: [{ label: "每日阅读", data: counts, borderColor: "#4f6ef7", backgroundColor: "rgba(79,110,247,.12)", fill: true, tension: .3, pointRadius: 3 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+// 安全设置 innerHTML：元素不存在时只打日志，不阻断其它模块
+function setHtml(sel, html) {
+  const el = $(sel);
+  if (!el) { console.warn("Dashboard: missing element", sel); return; }
+  el.innerHTML = html;
+}
+
+// 趋势区间 / 指标切换（事件只绑一次）
+function bindTrendControls() {
+  $$("#trendRange button").forEach((b) => {
+    b.onclick = () => {
+      $$("#trendRange button").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      trendRange = +b.dataset.r;
+      renderTrend();
+    };
   });
+  $$("#trendMetric button").forEach((b) => {
+    b.onclick = () => {
+      if (b.disabled) return;
+      $$("#trendMetric button").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      trendMetric = b.dataset.m;
+      renderTrend();
+    };
+  });
+}
 
-  const fd = s.field_distribution;
-  if (fieldChart) fieldChart.destroy();
-  if (fd.length) {
-    fieldChart = new Chart($("#fieldChart"), {
-      type: "doughnut",
-      data: { labels: fd.map((f) => f.field), datasets: [{ data: fd.map((f) => f.count), backgroundColor: ["#4f6ef7", "#1aab6b", "#e0902b", "#9b6ef7", "#e0483b", "#28b6c4", "#d669c0"] }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "right" } } },
+function renderTrend() {
+  if (!dashState) return;
+  const all = dashState.trend || [];
+  const slice = all.slice(Math.max(0, all.length - trendRange));
+  const data = slice.map((t) => (t[trendMetric] == null ? 0 : t[trendMetric]));
+  const labels = slice.map((t) => t.date);
+  if (trendChart) trendChart.destroy();
+  // 延迟到下一帧再创建，确保 canvas 容器已完成布局（避免初始 0 尺寸）
+  requestAnimationFrame(() => {
+    const canvas = $("#trendChart");
+    if (!canvas) return;
+    trendChart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: trendMetric === "count" ? "每日阅读" : (trendMetric === "minutes" ? "阅读时长(分)" : "笔记数"),
+          data,
+          borderColor: "#4f6ef7",
+          backgroundColor: "rgba(79,110,247,.12)",
+          fill: true, tension: .3, pointRadius: 2,
+        }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+      },
     });
-  } else {
-    $("#fieldChart").replaceWith?.(null);
+  });
+}
+
+async function loadStats() {
+  let s;
+  try {
+    s = await api("/stats/dashboard");
+  } catch (e) {
+    $("#statCards").innerHTML = `<div class="stat" style="grid-column:1/-1">看板数据加载失败：${esc(e.message)}</div>`;
+    return;
   }
+  dashState = s;
+
+  // —— KPI 卡片（5 张）——
+  setHtml("#statCards", `
+    ${kpi(esc(s.week_read), "本周阅读", `上周 ${esc(s.prev_week_read)} 篇`)}
+    ${kpi(esc(s.unread_count), "待读论文", `积压超30天 ${esc((s.backlog && s.backlog.over30) ?? 0)} 篇`)}
+    ${kpi(esc(s.radar_added), "Radar 发现", `本周 +${esc(s.radar_added_week)} · 累计收录`)}
+    ${kpi(`${esc(s.weekly_progress)}<span style="font-size:15px;color:var(--muted)">/${esc(s.weekly_goal)}</span>`, "本周目标", `预测：${esc(s.weekly_forecast)}`)}
+    ${kpi(esc(s.week_new), "本周新增", `上周 ${esc(s.prev_week_new)} 篇`)}
+  `);
+
+  // —— 今日建议 · 下一篇读什么 ——
+  setHtml("#suggestBox", s.suggest
+    ? `<div class="suggest">
+         <div class="suggest-title">${esc(s.suggest.title)}</div>
+         <div class="suggest-meta">
+           <span class="field-badge">${esc(s.suggest.field)}</span>
+           <span class="muted">${esc(s.suggest.reason)}</span>
+         </div>
+       </div>`
+    : `<div class="empty-mini">🎉 没有待读论文，去 Radar 发现新内容吧。</div>`);
+
+  // —— 论文状态（堆叠条 + 图例）——
+  const st = s.status || {};
+  setHtml("#statusBox", `
+    <div class="stack">
+      <span class="stack-seg" style="flex:${st.read || 0}"></span>
+      <span class="stack-seg reading" style="flex:${st.reading || 0}"></span>
+      <span class="stack-seg unread" style="flex:${st.unread || 0}"></span>
+    </div>
+    <div class="kv">
+      <div><i class="dot read"></i>已读 <b>${st.read || 0}</b></div>
+      <div><i class="dot reading"></i>在读 <b>${st.reading || 0}</b></div>
+      <div><i class="dot unread"></i>未读 <b>${st.unread || 0}</b></div>
+      <div class="muted">共 ${st.total || 0} 篇</div>
+    </div>`);
+
+  // —— 研究领域分布（横向条形，来自归一化标签）——
+  const fields = (s.fields || []).slice(0, 12);
+  const maxf = fields.length ? fields[0].count : 1;
+  setHtml("#fieldsBox", fields.length
+    ? fields.map((f) => `
+        <div class="hbar-row">
+          <span class="hbar-label" title="${esc(f.field)}">${esc(f.field)}</span>
+          <span class="hbar-track"><span class="hbar-fill" style="width:${(f.count / maxf * 100).toFixed(1)}%"></span></span>
+          <span class="hbar-num">${f.count}</span>
+        </div>`).join("")
+    : `<div class="empty-mini">暂无领域标签（论文的 tags 为空）</div>`);
+
+  // —— Research Pipeline（漏斗）——
+  const pl = s.pipeline || {};
+  const stages = [
+    ["收录自 Radar", pl.radar_added],
+    ["在读", pl.reading],
+    ["已读", pl.read],
+  ];
+  const maxp = Math.max(1, ...stages.map((x) => x[1] || 0));
+  setHtml("#pipelineBox", stages.map(([name, n]) => `
+      <div class="funnel-row">
+        <span class="funnel-label">${name}</span>
+        <span class="funnel-track"><span class="funnel-fill" style="width:${((n || 0) / maxp * 100).toFixed(1)}%"></span></span>
+        <span class="funnel-num">${n ?? 0}</span>
+      </div>`).join("") +
+      `<div class="muted funnel-note">笔记统计待接入（${pl.notes == null ? "—" : pl.notes}）</div>`);
+
+  // —— 待读积压 ——
+  const bl = s.backlog || {};
+  setHtml("#backlogBox", `
+    <div class="kv kv-2">
+      <div><b>${bl.unread ?? 0}</b><span class="muted">待读</span></div>
+      <div><b>${bl.avg_wait_days ?? 0}</b><span class="muted">平均积压(天)</span></div>
+      <div><b>${bl.over30 ?? 0}</b><span class="muted">超30天</span></div>
+      <div><b>+${bl.week_new ?? 0}</b><span class="muted">本周新增</span></div>
+      <div><b>${bl.week_read ?? 0}</b><span class="muted">本周已读</span></div>
+    </div>`);
+
+  // —— Radar 概览 ——
+  const rl = s.radar || {};
+  const kws = (rl.top_keywords || []).slice(0, 8);
+  setHtml("#radarBox", `
+    <div class="kv kv-2">
+      <div><b>${rl.added_total ?? 0}</b><span class="muted">累计收录</span></div>
+      <div><b>+${rl.added_week ?? 0}</b><span class="muted">本周</span></div>
+    </div>
+    <div class="tag-row">${kws.map((k) => `<span class="tag">${esc(k.tag)} <i>${k.count}</i></span>`).join("") || '<span class="muted">暂无关键词</span>'}</div>`);
+
+  // —— 90 天活跃度热力图 ——
+  const heat = s.heatmap || [];
+  const maxScore = Math.max(1, ...heat.map((h) => h.score));
+  setHtml("#heatBox", `<div class="heat">${heat.map((h) => {
+      const lv = h.score === 0 ? 0 : (h.score / maxScore <= .25 ? 1 : h.score / maxScore <= .5 ? 2 : h.score / maxScore <= .75 ? 3 : 4);
+      return `<span class="heat-cell heat-${lv}" title="${h.date}：活跃度 ${h.score}"></span>`;
+    }).join("")}</div>
+    <div class="heat-legend"><span class="muted">少</span>
+      <span class="heat-cell heat-0"></span><span class="heat-cell heat-1"></span>
+      <span class="heat-cell heat-2"></span><span class="heat-cell heat-3"></span>
+      <span class="heat-cell heat-4"></span><span class="muted">多</span></div>`);
+
+  // —— 研究方向变化（近30天 vs 前30天）——
+  const shift = s.shift || [];
+  setHtml("#shiftBox", shift.length
+    ? `<table class="shift-t">
+        <thead><tr><th>方向</th><th>近30天</th><th>前30天</th><th>变化</th></tr></thead>
+        <tbody>${shift.slice(0, 8).map((r) => {
+          const arrow = r.pct == null ? (r.last30 > 0 ? "🆕" : "—") : (r.pct > 0 ? `▲${r.pct}%` : r.pct < 0 ? `▼${Math.abs(r.pct)}%` : "—");
+          return `<tr><td>${esc(r.field)}</td><td>${r.last30}</td><td>${r.prev30}</td><td class="shift-pct">${arrow}</td></tr>`;
+        }).join("")}</tbody>
+      </table>`
+    : `<div class="empty-mini">近 60 天暂无已读记录</div>`);
+
+  renderTrend();
+  if (s.warning) toast(s.warning);
+}
+
+function kpi(n, label, sub) {
+  return `<div class="stat"><div class="n">${n}</div><div class="l">${label}</div><div class="sub">${sub}</div></div>`;
 }
 
 // ============ 论文库 ============
@@ -330,7 +490,8 @@ async function refreshTranslateTasks(silent) {
     return;
   }
   const stMap = { pending: ["待启动", "unread"], running: ["翻译中", "reading"],
-                  done: ["已完成", "read"], failed: ["失败", "unread"] };
+                  queued: ["排队中", "unread"], done: ["已完成", "read"],
+                  failed: ["失败", "unread"] };
   box.innerHTML = tasks.slice(0, 30).map((t) => {
     const [stText, stCls] = stMap[t.status] || [t.status || "—", "unread"];
     const pct = (t.status === "done") ? 100 : Math.max(0, Math.min(99, +(t.progress || 0)));
@@ -371,7 +532,7 @@ $("#trWinClose").onclick = () => {
 $("#trWinRefresh").onclick = () => refreshTranslateTasks();
 
 function statusText(s){return {unread:"未读",reading:"在读",read:"已读"}[s]||s;}
-function esc(s){return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function esc(s){ if (s == null) return ""; return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
 
 // ============ 分页器 ============
 function renderPager(box, data, goFn, onSize) {
@@ -1147,19 +1308,54 @@ $("#newsSearch").oninput = debounce(() => { newsPage = 1; loadNews(); }, 300);
 $("#newsSource").onchange = () => { newsPage = 1; loadNews(); };
 
 // ============ 设置 ============
+function setHelpDocUrl(url) {
+  ["#imaHelpLink", "#feishuHelpLink"].forEach((sel) => {
+    const a = $(sel);
+    if (!a) return;
+    if (url) {
+      a.href = url;
+      a.classList.remove("hidden");
+    } else {
+      a.removeAttribute("href");
+      a.classList.add("hidden");
+    }
+  });
+}
+
+function toggleWarn(id, show, html) {
+  const el = $("#" + id);
+  if (!el) return;
+  if (show) {
+    el.innerHTML = html;
+    el.classList.remove("hidden");
+  } else {
+    el.classList.add("hidden");
+  }
+}
+
 async function loadSettings() {
-  const api2 = await api("/settings/api");
-  $("#apiProvider").value = api2.provider || "OpenAI-Compatible";
-  $("#apiBase").value = api2.base_url || "";
-  $("#apiModel").value = api2.model_name || "";
-  $("#apiOther").value = api2.other_params || "{}";
+  const apiCfg = await api("/settings/api");
+  $("#apiProvider").value = apiCfg.provider || "OpenAI-Compatible";
+  $("#apiBase").value = apiCfg.base_url || "";
+  $("#apiModel").value = apiCfg.model_name || "";
+  $("#apiOther").value = apiCfg.other_params || "{}";
   $("#apiKey").value = "";
   const prefs = await api("/settings/prefs");
   $("#weeklyGoal").value = prefs.weekly_goal;
   const fc = await api("/feishu/config");
   $("#feishuAppId").value = fc.app_id || "";
+  $("#feishuSecret").value = "";
   const px = await api("/settings/radar_proxy");
   $("#radarProxy").value = px.proxy || "";
+  // IMA 凭证（仅回显「是否已配置 + 来源」，不回传明文）
+  let ima = null;
+  try {
+    ima = await api("/settings/ima");
+    $("#imaClientId").value = "";
+    $("#imaApiKey").value = "";
+    $("#imaKbId").value = "";
+    renderImaStatus(ima);
+  } catch (e) { /* 可选 */ }
   // arXiv 源
   const ax = await api("/settings/arxiv_source");
   $("#arxivSource").innerHTML = ax.sources.map((s) =>
@@ -1174,29 +1370,149 @@ async function loadSettings() {
     $("#rssFeeds").value = custom.map((f) => `${f.name}|${f.url}`).join("\n");
   } catch (e) { /* RSS 可选 */ }
   // RSSHub + 微信公众号
+  let rh = null, wx = null;
   try {
-    const rh = await api("/settings/rsshub");
+    rh = await api("/settings/rsshub");
     $("#rsshubBase").value = rh.base || "";
-    const wx = await api("/settings/wechat");
+    wx = await api("/settings/wechat");
     $("#wechatAccounts").value = (wx.accounts || []).map((a) => `${a.name}|${a.gh}`).join("\n");
   } catch (e) { /* 可选 */ }
+  // 未配置提示
+  renderMissingWarnings({ api: apiCfg, ima, feishu: fc, rsshub: rh, wechat: wx });
+  // 使用说明书链接
+  try {
+    const help = await api("/settings/help_doc_url");
+    setHelpDocUrl(help.url || "");
+  } catch (e) {
+    setHelpDocUrl("");
+  }
 }
+
+function renderMissingWarnings(state = {}) {
+  if (state.api !== undefined) {
+    toggleWarn("apiWarn",
+      !(state.api.base_url && state.api.api_key_set),
+      (!state.api.base_url ? "未配置 Base URL；" : "") +
+      (!state.api.api_key_set ? "未配置 API Key；" : "") +
+      "AI 总结 / 论文库问答等功能将不可用。"
+    );
+  }
+  if (state.ima !== undefined) {
+    toggleWarn("imaWarn",
+      !(state.ima.client_id_set && state.ima.api_key_set),
+      "IMA Client ID / API Key 未配置，论文库存储、Radar 加入论文库等功能不可用。"
+    );
+  }
+  if (state.feishu !== undefined) {
+    toggleWarn("feishuWarn",
+      !(state.feishu.app_id && state.feishu.app_secret_set),
+      "飞书应用凭证未配置，TeX→飞书 文档写入功能不可用。"
+    );
+  }
+  if (state.rsshub !== undefined) {
+    toggleWarn("rsshubWarn",
+      !(state.rsshub.base && state.rsshub.base.trim()),
+      "未配置 RSSHub 地址，微信公众号资讯抓取不可用。"
+    );
+  }
+  if (state.wechat !== undefined) {
+    toggleWarn("wechatWarn",
+      !(state.wechat.accounts && state.wechat.accounts.length),
+      "未配置要抓取的公众号，微信公众号资讯源为空。"
+    );
+  }
+  if (state.proxy !== undefined) {
+    toggleWarn("proxyWarn",
+      !state.proxy.trim(),
+      "未配置 Radar 代理，将尝试直连 arXiv / Google News；若无法访问请填写代理地址。"
+    );
+  }
+}
+
+async function runConnectivityTest(endpoint, statusId, body) {
+  const st = $("#" + statusId);
+  st.textContent = "测试中…";
+  st.className = "conn-status loading";
+  try {
+    const r = await api(endpoint, { method: "POST", body: body || undefined });
+    st.textContent = (r.ok ? "✓ " : "✗ ") + r.detail;
+    st.className = "conn-status " + (r.ok ? "ok" : "bad");
+    // 若响应带全部源扫描（arXiv 源测试），渲染可达性列表
+    const scanBox = $("#" + statusId + "Scan");
+    if (scanBox && Array.isArray(r.sources)) {
+      scanBox.innerHTML = r.sources.map(s => {
+        const icon = s.ok ? "✓" : "✗";
+        const cls = s.ok ? "ok" : "bad";
+        const mark = (s.key === r.tested) ? " ◀ 当前测试" : "";
+        return `<span class="src-item ${cls}">${icon} ${esc(s.name)}${mark}</span>`;
+      }).join("");
+    }
+  } catch (e) {
+    st.textContent = "✗ 测试失败：" + (e.message || e);
+    st.className = "conn-status bad";
+  }
+}
+
 $("#btnSaveApi").onclick = async () => {
   await api("/settings/api", { method: "PUT", body: {
     provider: $("#apiProvider").value, base_url: $("#apiBase").value,
     api_key: $("#apiKey").value, model_name: $("#apiModel").value, other_params: $("#apiOther").value,
   }});
   toast("API 配置已保存（Key 已加密）"); $("#apiKey").value = "";
+  loadSettings();
 };
+$("#btnTestApi").onclick = () => runConnectivityTest("/settings/api/test", "apiConn");
+
+$("#btnSaveIma").onclick = async () => {
+  await api("/settings/ima", { method: "PUT", body: {
+    client_id: $("#imaClientId").value.trim(),
+    api_key: $("#imaApiKey").value,
+    kb_id: $("#imaKbId").value.trim(),
+  }});
+  $("#imaApiKey").value = "";
+  const ima = await api("/settings/ima");
+  renderImaStatus(ima);
+  renderMissingWarnings({ ima, feishu: await api("/feishu/config").catch(()=>({})), api: await api("/settings/api"), rsshub: await api("/settings/rsshub").catch(()=>({})), wechat: await api("/settings/wechat").catch(()=>({})) });
+  toast("IMA 凭证已保存，即时生效");
+};
+$("#btnTestIma").onclick = () => runConnectivityTest("/settings/ima/test", "imaConn");
+
+// 渲染 IMA 凭证每个参数的「是否配置 + 真实来源」（环境变量 / 设置页 / 未配置）
+function renderImaStatus(ima) {
+  const tip = $("#imaTip");
+  if (!tip) return;
+  const rows = [
+    ["Client ID", ima.client_id_set, ima.client_id_src, ima.client_id_env, false],
+    ["API Key", ima.api_key_set, ima.api_key_src, ima.api_key_env, false],
+    ["知识库 ID", ima.kb_id_set, ima.kb_id_src, ima.kb_id_env, true],
+  ];
+  const html = rows.map(([name, set, src, env, optional]) => {
+    if (set) {
+      const from = src === "env"
+        ? `环境变量 <code>${esc(env)}</code>`
+        : (src === "settings" ? "设置页已保存" : "已配置");
+      return `<span class="ima-chip ok">✓ ${esc(name)} · ${from}</span>`;
+    }
+    return `<span class="ima-chip ${optional ? "opt" : "bad"}">${optional ? "○" : "✗"} ${esc(name)}${optional ? "（可选）" : "（未配置）"}</span>`;
+  }).join("");
+  const allOk = ima.client_id_set && ima.api_key_set;
+  const summary = allOk
+    ? `<span class="ima-summary ok">IMA 凭证已就绪（知识库功能可用）</span>`
+    : `<span class="ima-summary bad">⚠ IMA 凭证不完整（知识库功能不可用）</span>`;
+  tip.innerHTML = summary + `<div class="ima-chips">${html}</div>`;
+}
 $("#btnSaveProxy").onclick = async () => {
   await api("/settings/radar_proxy", { method: "PUT", body: { proxy: $("#radarProxy").value.trim() } });
+  renderMissingWarnings({ proxy: $("#radarProxy").value.trim() });
   toast("代理已保存，下次检索生效");
 };
+$("#btnTestProxy").onclick = () => runConnectivityTest("/settings/radar_proxy/test", "proxyConn");
 $("#btnSaveArxiv").onclick = async () => {
   const r = await api("/settings/arxiv_source", { method: "PUT", body: { source: $("#arxivSource").value } });
   $("#arxivSourceTip").textContent = "当前：" + (r.sources.find((s) => s.key === r.current)?.name || r.current);
   toast("arXiv 源已保存，下次检索生效");
 };
+$("#btnTestArxiv").onclick = () => runConnectivityTest("/settings/arxiv_source/test", "arxivConn", { source: $("#arxivSource").value });
 $("#btnSaveRss").onclick = async () => {
   const lines = $("#rssFeeds").value.split("\n").map((l) => l.trim()).filter(Boolean);
   const feeds = lines.map((l) => {
@@ -1212,8 +1528,10 @@ $("#btnSaveRsshub").onclick = async () => {
   const base = $("#rsshubBase").value.trim();
   const r = await api("/settings/rsshub", { method: "PUT", body: { base } });
   $("#rsshubTip").textContent = "已保存：" + (r.base || "（空，使用默认公共实例）");
+  renderMissingWarnings({ rsshub: { base: r.base } });
   toast("RSSHub 地址已保存，下次检索生效");
 };
+$("#btnTestRsshub").onclick = () => runConnectivityTest("/settings/rsshub/test", "rsshubConn");
 $("#btnSaveWechat").onclick = async () => {
   const lines = $("#wechatAccounts").value.split("\n").map((l) => l.trim()).filter(Boolean);
   const accounts = lines.map((l) => {
@@ -1223,7 +1541,8 @@ $("#btnSaveWechat").onclick = async () => {
   });
   await api("/settings/wechat", { method: "PUT", body: { accounts } });
   $("#wechatTip").textContent = "已保存 " + accounts.length + " 个公众号";
-  toast("公众号列表已保存，下次检索生效");
+  renderMissingWarnings({ wechat: { accounts } });
+  toast("公众号列表已保存，下次资讯检索生效");
 };
 $("#btnSavePrefs").onclick = async () => {
   await api("/settings/prefs", { method: "PUT", body: { weekly_goal: +$("#weeklyGoal").value || 5 } });
@@ -1231,6 +1550,8 @@ $("#btnSavePrefs").onclick = async () => {
 };
 $("#btnSaveFeishu").onclick = async () => {
   await api("/feishu/config", { method: "PUT", body: { app_id: $("#feishuAppId").value, app_secret: $("#feishuSecret").value } });
+  $("#feishuSecret").value = "";
+  renderMissingWarnings({ feishu: await api("/feishu/config").catch(()=>({})) });
   toast("飞书凭证已保存");
 };
 $("#btnAuthFeishu").onclick = async () => {
@@ -1240,9 +1561,11 @@ $("#btnAuthFeishu").onclick = async () => {
     $("#feishuStatus").textContent = "✅ 授权成功：" + r.token_masked;
   } catch (e) { $("#feishuStatus").textContent = "授权失败：" + e.message; }
 };
+$("#btnTestFeishu").onclick = () => runConnectivityTest("/feishu/test", "feishuConn");
 
 // ============ 启动 ============
 initFetchAssetsPref();
 initLlmReady();        // 查大模型配置：没配置则禁用「生成中文版」按钮
 refreshRadarBulk();   // 未检索时把批量工具条置灰
+bindTrendControls();   // 看板趋势区间/指标切换（仅绑一次）
 loadStats();

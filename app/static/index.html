@@ -1,254 +1,333 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-CN" data-page-node-id="hPLkQsJxFbUE4AIAruw9Zh">
+<head data-page-node-id="WbDx9uenRPhOtdHXvrmG0C">
+  <meta charset="UTF-8" data-page-node-id="nwyr150kfQnP8zYgR0Rq5d">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="GHH14oNVBvTS8IuW63KEiY">
   <title>AI 科研论文工作台</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260823b">
+  <link rel="stylesheet" href="/static/styles.css?v=20260823b" data-page-node-id="S4VZNHFxwgpHqgGllDDSio">
 </head>
-<body>
-  <header class="topbar">
-    <div class="logo">AI 科研<span>工作台</span></div>
-    <nav class="tabs">
-      <button data-tab="dashboard" class="active">📊 看板</button>
-      <button data-tab="library">📚 论文库</button>
-      <button data-tab="news">📰 资讯库</button>
-      <button data-tab="radar">📡 Research Radar</button>
-      <button data-tab="settings">⚙️ 设置</button>
+<body data-page-node-id="RyuNssbw0wX1G6ykGeDaMV">
+  <header class="topbar" data-page-node-id="kGAMCjb5prnz1eF3D4xG9J">
+    <div class="logo" data-page-node-id="CxNbzqSlDkAo2ARvhQm1VP">AI 科研<span data-page-node-id="UjRNiaBoX9XJflGN0ZwXUP">工作台</span></div>
+    <nav class="tabs" data-page-node-id="HnmP8W7VkS8LCcz415Nbh6">
+      <button data-tab="dashboard" class="active" data-page-node-id="WxxmbKEVQYZCINRRZxg8Sf">📊 看板</button>
+      <button data-tab="library" data-page-node-id="cxjR1kuhdpnb0fTBHSjnmT">📚 论文库</button>
+      <button data-tab="news" data-page-node-id="HZuBO1xAQACR1Qx31qlXcC">📰 资讯库</button>
+      <button data-tab="radar" data-page-node-id="QDu2oGh5kfQwcRKVJBCa4z">📡 Research Radar</button>
+      <button data-tab="settings" data-page-node-id="nAkEb0h7mD3imhF4brw6H1">⚙️ 设置</button>
     </nav>
   </header>
 
-  <div class="container">
+  <div class="container" data-page-node-id="laRRW8WHqwnmLWJKJmg1Qp">
 
     <!-- 看板 -->
-    <section class="page active" id="page-dashboard">
-      <div class="grid stat-grid" id="statCards"></div>
-      <div class="section-title">阅读趋势 & 领域分布</div>
-      <div class="grid charts">
-        <div class="card"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
-        <div class="card"><div class="chart-box"><canvas id="fieldChart"></canvas></div></div>
+    <section class="page active" id="page-dashboard" data-page-node-id="7SPWpyENVABOryYbP8Gas4">
+      <div class="grid stat-grid" id="statCards" data-page-node-id="lX1Buo2JVnSyNCTXL212B8"></div>
+
+      <div class="dash-grid" data-page-node-id="iOeES22HFgfKnl27Zy2zX8">
+        <!-- 阅读趋势 -->
+        <div class="card dash-trend" data-page-node-id="1oS5ZzDmATDY0KjSGmO7ES">
+          <div class="card-h" data-page-node-id="W9to6goThf0HuOzzCDy0nE">
+            <span data-page-node-id="izV2nBcX4Tma31COqoch3f">阅读趋势</span>
+            <div class="seg" id="trendRange" data-page-node-id="8tlAk5zbupyCGGrDoNOmWX">
+              <button data-r="7" data-page-node-id="vEkzR6Vcu8n4jL0bzEszn3">7天</button>
+              <button data-r="30" class="active" data-page-node-id="hbCN2pj4Pxy7HZ8HrJr15C">30天</button>
+              <button data-r="90" data-page-node-id="EeLj4lL393RYFcBRebnsez">90天</button>
+            </div>
+          </div>
+          <div class="seg seg-sm" id="trendMetric" data-page-node-id="9hwYsPdfDikF19Vifcm079">
+            <button data-m="count" class="active" data-page-node-id="0GZCeQYved2vQv5Ig1RaC2">论文数</button>
+            <button data-m="minutes" disabled title="阅读时长统计待接入" data-page-node-id="rlzLLgsT7k0709VzKreDQj">阅读时长</button>
+            <button data-m="notes" disabled title="笔记统计待接入" data-page-node-id="mz9xVBfxe9t7uY5tBbtUjx">笔记数</button>
+          </div>
+          <div class="chart-box" data-page-node-id="TNimS5l3CAEaUMMqZH6yh1"><canvas id="trendChart" data-page-node-id="HS7Cj3VEcs9M8A0O8pHFFX"></canvas></div>
+        </div>
+
+        <!-- 今日建议 -->
+        <div class="card dash-suggest" data-page-node-id="VBDR1I6PupQ4UuEcUvC8Yj">
+          <div class="card-h" data-page-node-id="nYGw9WMnD7ZyVEc7k87Ali"><span data-page-node-id="ooA4HvnHndYEwXXbsMBkki">今日建议 · 下一篇读什么</span></div>
+          <div id="suggestBox" data-page-node-id="mXBI55ogsQuFU1NBwfsbyC"></div>
+        </div>
+
+        <!-- 论文状态 -->
+        <div class="card dash-status" data-page-node-id="HfjeVb9I4GkfFliizhxN9i">
+          <div class="card-h" data-page-node-id="VMqBEke9GYxBzKHOtxZCIZ"><span data-page-node-id="qz3zCZgdQEu6V3hr0i09ZR">论文状态</span></div>
+          <div id="statusBox" data-page-node-id="gob1e9UoQ58eMntBEnV9b7"></div>
+        </div>
+
+        <!-- 研究领域分布 -->
+        <div class="card dash-fields" data-page-node-id="NY4cirmCI1GHkBtCuRA97v">
+          <div class="card-h" data-page-node-id="QZqwqvgI8rp6zSMXVizrw9"><span data-page-node-id="KneZ5Za0bvB119OLoX4E2F">研究领域分布</span><span class="card-sub" data-page-node-id="NRYVCqvGtkivps676JYHSB">来自论文标签（归一化）</span></div>
+          <div id="fieldsBox" data-page-node-id="kt9LQA4CW3MBNakzTE9itl"></div>
+        </div>
+
+        <!-- Research Pipeline -->
+        <div class="card dash-pipeline" data-page-node-id="8zCRRPYB6VRXXS4gB5e13n">
+          <div class="card-h" data-page-node-id="WSeMb8HISCswnF6wVLMk8H"><span data-page-node-id="MnsXOYUQeyKuTH0x9CGBDH">Research Pipeline</span></div>
+          <div id="pipelineBox" data-page-node-id="FM0DhOoWY9qzS9iUIoCna3"></div>
+        </div>
+
+        <!-- 待读积压 -->
+        <div class="card dash-backlog" data-page-node-id="j7Pso9nDT53qTgHU1zfJOi">
+          <div class="card-h" data-page-node-id="2SCjKnGDTqiyOXErYpxpvT"><span data-page-node-id="Wm4SssuS1xhUiX8S1j7sLx">待读积压</span></div>
+          <div id="backlogBox" data-page-node-id="qtv7EMDulF9eoMZgR5t3Kq"></div>
+        </div>
+
+        <!-- Radar 概览 -->
+        <div class="card dash-radar" data-page-node-id="33ViuMTt3BHrNnifa5oTZz">
+          <div class="card-h" data-page-node-id="EKgCftbUuGYXB5drFMIeQ5"><span data-page-node-id="4SmFh0fB6dP9l5eKxLsonq">Radar 概览</span><span class="card-sub" data-page-node-id="pBra7pOXQYDpG9P7oJrr67">收录自 Radar 的论文</span></div>
+          <div id="radarBox" data-page-node-id="YHg1dQpA4xBJaAjml6hFxD"></div>
+        </div>
+
+        <!-- 90 天活跃度热力图 -->
+        <div class="card dash-heat" data-page-node-id="gJ8lX5OOGbRedRAF49iQPZ">
+          <div class="card-h" data-page-node-id="MsNJoPbWQ2KJs7qkKIFn6v"><span data-page-node-id="XHS8JafrlePcRmM81wUV8W">90 天活跃度</span><span class="card-sub" data-page-node-id="hAdcA3XUtB0XOrF8aorjYM">收录 +收藏 +完成阅读</span></div>
+          <div id="heatBox" data-page-node-id="dWbdmS5u78jGWdqR8nteKB"></div>
+        </div>
+
+        <!-- 研究方向变化 -->
+        <div class="card dash-shift" data-page-node-id="TZwuH6ZLSrHxvzaiY5FvdE">
+          <div class="card-h" data-page-node-id="jd4hHElVSMI7DH8tDxnsNH"><span data-page-node-id="uwnJgSJ9e3WzAHVdJBe76e">研究方向变化</span><span class="card-sub" data-page-node-id="LNspfDo2IhmK9IIxAcFoJn">近30天 vs 前30天（按已读）</span></div>
+          <div id="shiftBox" data-page-node-id="nyrE54QBEzDcpPDP8ARkXy"></div>
+        </div>
       </div>
     </section>
 
     <!-- 论文库 -->
-    <section class="page" id="page-library">
-      <div class="toolbar">
-        <input id="libSearch" placeholder="搜索标题 / 摘要 / 笔记 / 标签" style="min-width:240px">
-        <select id="libField"></select>
-        <select id="libStatus">
-          <option value="">全部状态</option>
-          <option value="unread">未读</option>
-          <option value="reading">在读</option>
-          <option value="read">已读</option>
+    <section class="page" id="page-library" data-page-node-id="K4vW2ANNDy4bZk1RENKTKL">
+      <div class="toolbar" data-page-node-id="FXMiUBC3ivAXAQkxxLgz91">
+        <input id="libSearch" placeholder="搜索标题 / 摘要 / 笔记 / 标签" style="min-width:240px" data-page-node-id="QKrNyjh9CIplUzUUKLmkyV">
+        <select id="libField" data-page-node-id="o7FFCZHAQyTRhJG3ICIogj"></select>
+        <select id="libStatus" data-page-node-id="wUkeW9bnueQmjnj4MQ8S07">
+          <option value="" data-page-node-id="q3IjEPW6H6lp1qOKXegbDd">全部状态</option>
+          <option value="unread" data-page-node-id="OlzChZMgopj9VoakeA3Fdr">未读</option>
+          <option value="reading" data-page-node-id="iBXs3DCf2N4E5Yr4xxLptH">在读</option>
+          <option value="read" data-page-node-id="pIZiGbxz99UpCiJ2UGf19z">已读</option>
         </select>
-        <button class="primary" id="btnAddPaper">+ 新增论文</button>
-        <button class="btn" id="btnAddField">+ 领域</button>
-        <button class="btn" id="btnTranslateTasks" title="查看后台自动翻译任务的执行进度">🌍 翻译任务</button>
+        <button class="primary" id="btnAddPaper" data-page-node-id="o84pXidpcJ9Xn8xhX5ka7P">+ 新增论文</button>
+        <button class="btn" id="btnAddField" data-page-node-id="BXkxceDzfjpuQsTirYdDlk">+ 领域</button>
+        <button class="btn" id="btnTranslateTasks" title="查看后台自动翻译任务的执行进度" data-page-node-id="BucUI4H9oyDaKVi3CNU9TN">🌍 翻译任务</button>
       </div>
-      <div class="paper-list" id="paperList"></div>
-      <div class="empty hidden" id="libEmpty">还没有论文，去 Research Radar 发现或点击「新增论文」。</div>
-      <div class="pager" id="paperPager"></div>
+      <div class="paper-list" id="paperList" data-page-node-id="HGDZOARwkHwkCBsChkTm9e"></div>
+      <div class="empty hidden" id="libEmpty" data-page-node-id="h4OgxrAQ7k1QXvdVahZrj8">还没有论文，去 Research Radar 发现或点击「新增论文」。</div>
+      <div class="pager" id="paperPager" data-page-node-id="Y3NLGyWb0VIDIMaCAp81J9"></div>
     </section>
 
     <!-- 资讯库 -->
-    <section class="page" id="page-news">
-      <div class="toolbar">
-        <input id="newsSearch" placeholder="搜索标题 / 摘要" style="min-width:240px">
-        <select id="newsSource"></select>
-        <span class="muted" id="newsCount"></span>
+    <section class="page" id="page-news" data-page-node-id="asZDsCDS4Dy89GiWJkC0T9">
+      <div class="toolbar" data-page-node-id="l5pcgVH2u52G2wKyeXGmgw">
+        <input id="newsSearch" placeholder="搜索标题 / 摘要" style="min-width:240px" data-page-node-id="V3qrDwvCFpcfR6eBLqc40n">
+        <select id="newsSource" data-page-node-id="Y8CiV9rVdNc1RabKc6P2cU"></select>
+        <span class="muted" id="newsCount" data-page-node-id="9cB65Pd9JdzoDPiHYyCo1d"></span>
       </div>
-      <div class="news-list" id="newsList"></div>
-      <div class="empty hidden" id="newsEmpty">还没有资讯，去 Research Radar 检索「AI 资讯」并加入。</div>
-      <div class="pager" id="newsPager"></div>
+      <div class="news-list" id="newsList" data-page-node-id="BJ1exN9i4OOSyi32VSQm9Z"></div>
+      <div class="empty hidden" id="newsEmpty" data-page-node-id="yCHe6T1SE4AJFF6Jknx3oM">还没有资讯，去 Research Radar 检索「AI 资讯」并加入。</div>
+      <div class="pager" id="newsPager" data-page-node-id="LLaQj1qafiyTDdmpzAncbR"></div>
     </section>
 
     <!-- Radar -->
-    <section class="page" id="page-radar">
-      <div class="card">
-        <div class="toolbar" style="margin-bottom:6px">
-          <strong>检索模板</strong>
-          <button class="btn sm" id="btnAddTpl">+ 新增模板</button>
+    <section class="page" id="page-radar" data-page-node-id="A69COKNZYjxa6s2jdFMJOd">
+      <div class="card" data-page-node-id="QgBVnVf45xj2LtDoSeo7MB">
+        <div class="toolbar" style="margin-bottom:6px" data-page-node-id="e90nWpAjq4vbW3CovLCKlF">
+          <strong data-page-node-id="DkozEtzgag07k2g7Yx1LCB">检索模板</strong>
+          <button class="btn sm" id="btnAddTpl" data-page-node-id="H9v5CQff2W5BCUQNbqRjEj">+ 新增模板</button>
         </div>
-        <div id="tplList"></div>
+        <div id="tplList" data-page-node-id="33xyBF7W0bqvoFvI2C9X13"></div>
       </div>
-      <div class="section-title">执行检索</div>
-      <div class="card">
-        <div class="row2">
-          <div>
-            <div class="field-row"><label>检索类型</label>
-              <select id="runType">
-                <option value="paper">最新论文</option>
-                <option value="news">AI 资讯</option>
+      <div class="section-title" data-page-node-id="CiBRdhAbD35RNNgwwCkEHo">执行检索</div>
+      <div class="card" data-page-node-id="IjDI7hxsKAV6zBTCq3eyFl">
+        <div class="row2" data-page-node-id="3aAX3UafvaC6mWT94RNbFR">
+          <div data-page-node-id="ufFfTLCxphztRXZ7roNUeU">
+            <div class="field-row" data-page-node-id="ib1YrBkVHHCLgv0wIO1cb5"><label data-page-node-id="FWF28XjCY0hG8Pwbsnb5pL">检索类型</label>
+              <select id="runType" data-page-node-id="gA7LWW86AZzEUmACavejf4">
+                <option value="paper" data-page-node-id="oUzLdTfBlhTRm1QevZ7DXe">最新论文</option>
+                <option value="news" data-page-node-id="Pud8PL8c7fbBFLNvqCzJal">AI 资讯</option>
               </select>
             </div>
-            <div class="field-row"><label>关键词</label>
-              <input id="runKeywords" placeholder="逗号分隔，如 VLA, World Model" style="width:100%">
+            <div class="field-row" data-page-node-id="nk7MgF6N3VRGh4R0f0wVfM"><label data-page-node-id="1vrvc2muzumjXyn2nwSD1n">关键词</label>
+              <input id="runKeywords" placeholder="逗号分隔，如 VLA, World Model" style="width:100%" data-page-node-id="OOgg8UoNFlEReiLilCys1A">
             </div>
-            <div class="field-row"><label>领域</label>
-              <input id="runField" placeholder="如 VLA（可选）" style="width:100%">
+            <div class="field-row" data-page-node-id="EFcBv9HdIBxjpMY3yFOawo"><label data-page-node-id="s7LNQ9uG1sOVEf1EahGszE">领域</label>
+              <input id="runField" placeholder="如 VLA（可选）" style="width:100%" data-page-node-id="MbK2HfGFRtOoAo9SHZ0AIw">
             </div>
           </div>
-          <div>
-            <div class="field-row"><label>时间范围</label>
-              <select id="runDays">
-                <option value="2">最近 2 天</option>
-                <option value="7" selected>最近 7 天（默认）</option>
-                <option value="14">最近 14 天</option>
-                <option value="30">最近 30 天</option>
+          <div data-page-node-id="lxLpqS2xOzwqFnCi7o0chz">
+            <div class="field-row" data-page-node-id="KCFk8e1HSLeF2TxTeipTbG"><label data-page-node-id="yxxAchFgbkLPQM7Hm8pn9C">时间范围</label>
+              <select id="runDays" data-page-node-id="0cYYIK0cbawRjM1O0ZUkSZ">
+                <option value="2" data-page-node-id="PM6ixq61E05LK3W53DZfeT">最近 2 天</option>
+                <option value="7" selected data-page-node-id="bYcSSnFCkRcmEffeJrON0J">最近 7 天（默认）</option>
+                <option value="14" data-page-node-id="evffnKydOTFqwhf2vQf7GS">最近 14 天</option>
+                <option value="30" data-page-node-id="r8vYbaLL0ahPAbHuK8aGoz">最近 30 天</option>
               </select>
             </div>
-            <div class="field-row"><label>数量</label>
-              <input id="runMax" type="number" value="30" style="width:100px">
+            <div class="field-row" data-page-node-id="SkXVxMvPO1g0M3NBsytXRQ"><label data-page-node-id="WZIV1MCkseBl6QOooSKIp6">数量</label>
+              <input id="runMax" type="number" value="30" style="width:100px" data-page-node-id="LDLlO53AvFXkb0cZLm7rtf">
             </div>
-            <div class="field-row"><label>资讯语言</label>
-              <select id="runLang">
-                <option value="en">English / 全球（默认，拿国际资讯）</option>
-                <option value="zh">中文 / 中国</option>
-                <option value="auto">英文优先，失败回退中文</option>
+            <div class="field-row" data-page-node-id="hQGCQsTV1J5rf6iG27F0ha"><label data-page-node-id="ds18ERO9dJNlr0XMIKBj5B">资讯语言</label>
+              <select id="runLang" data-page-node-id="TKnZSU7SeaN9DkhXJRibSN">
+                <option value="en" data-page-node-id="SNc3erSuygQA1G8UcEWEGU">English / 全球（默认，拿国际资讯）</option>
+                <option value="zh" data-page-node-id="2xns6iqlZQDXRjdew0X3vp">中文 / 中国</option>
+                <option value="auto" data-page-node-id="qFzxuZqFiQLJweVdanXvhL">英文优先，失败回退中文</option>
               </select>
             </div>
-            <div class="field-row"><label>资讯渠道</label>
-              <select id="runChannel">
-                <option value="all" selected>全渠道（Google News + 国内媒体 + 公众号）</option>
-                <option value="google">仅 Google News</option>
-                <option value="cn">仅国内媒体 / 公众号（量子位、36氪、InfoQ、RSSHub 公众号）</option>
+            <div class="field-row" data-page-node-id="7zmvWWaf0FbOpNBzBcwfEi"><label data-page-node-id="OC1L4IpFaQeGQIEV7qDIWY">资讯渠道</label>
+              <select id="runChannel" data-page-node-id="xnkNK1MFuM2u8vclOKBGF5">
+                <option value="all" selected data-page-node-id="ylA25FI84CfimH9xpJiNEp">全渠道（Google News + 国内媒体 + 公众号）</option>
+                <option value="google" data-page-node-id="MlvD8k98oYmiUaZPD9NtgM">仅 Google News</option>
+                <option value="cn" data-page-node-id="DDg1GuD8XJx4UPA4wsFSoW">仅国内媒体 / 公众号（量子位、36氪、InfoQ、RSSHub 公众号）</option>
               </select>
             </div>
-            <div class="field-row"><label></label>
-              <button class="primary" id="btnRun">▶ 运行检索</button>
+            <div class="field-row" data-page-node-id="rPFE8aAIrdGEByFoOjC9eA"><label data-page-node-id="cHgrFiCQLzags46hJtsMUL"></label>
+              <button class="primary" id="btnRun" data-page-node-id="M9OaizMSHRqTwG6uR4zsTL">▶ 运行检索</button>
             </div>
           </div>
         </div>
       </div>
-      <div class="toolbar" style="margin-top:14px">
-        <button class="btn sm" id="btnAddAll">全部加入论文库</button>
-        <span class="muted" id="radarCount"></span>
+      <div class="toolbar" style="margin-top:14px" data-page-node-id="O3X7V3eLGuMLfwRAPVmrdA">
+        <button class="btn sm" id="btnAddAll" data-page-node-id="AREoFsZwDBTRHd705gM8B3">全部加入论文库</button>
+        <span class="muted" id="radarCount" data-page-node-id="AdtvcO5QSZCjGxMlO4gObA"></span>
       </div>
       <!-- 检索步骤进度：检索进行中显示，每一步 wait/running/ok/error -->
-      <div class="card hidden" id="radarProgressCard">
-        <div class="rp-head">
-          <strong>检索进度</strong>
-          <span class="muted" id="rpState"></span>
+      <div class="card hidden" id="radarProgressCard" data-page-node-id="XNj79JGPt57GtSxEYY0nRI">
+        <div class="rp-head" data-page-node-id="wGzDGv83TOfexFUEEBeabx">
+          <strong data-page-node-id="l13GmBHoEdLl8iWxKhnzGA">检索进度</strong>
+          <span class="muted" id="rpState" data-page-node-id="VAu8aC3YkW3n8sgDphBzto"></span>
         </div>
-        <div class="rp-steps" id="rpSteps"></div>
-        <div class="rp-bar"><div class="rp-bar-fill" id="rpBarFill"></div></div>
+        <div class="rp-steps" id="rpSteps" data-page-node-id="1r0qW6dbLVHvDiy9BGSHg3"></div>
+        <div class="rp-bar" data-page-node-id="9jNUQdS8dsX9SJM8TA6vBb"><div class="rp-bar-fill" id="rpBarFill" data-page-node-id="coCIcgc7BSUmQ6z6vf3o1U"></div></div>
       </div>
       <!-- 批量入库工具条：常驻显示，未检索时按钮置灰 -->
-      <div class="toolbar" id="radarBulkBar" style="margin-top:-6px">
-        <button class="btn sm" id="btnSelAll" disabled>全选</button>
-        <button class="btn sm" id="btnSelNone" disabled>取消全选</button>
-        <span class="muted" id="radarSelCount">已选 0 条</span>
+      <div class="toolbar" id="radarBulkBar" style="margin-top:-6px" data-page-node-id="eAwXCLL3ukrfO4zujChDqh">
+        <button class="btn sm" id="btnSelAll" disabled data-page-node-id="8HrUsDwWhmn0vDnniBjpfF">全选</button>
+        <button class="btn sm" id="btnSelNone" disabled data-page-node-id="SqaImywxVFbZhjmoFuFZT8">取消全选</button>
+        <span class="muted" id="radarSelCount" data-page-node-id="Yg0PnAulJm1BGk0L1weaI1">已选 0 条</span>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer"
-               title="勾选后，入库的论文会自动从 arXiv 下载原文 PDF 与 LaTeX 源码，解压后一并上传到 IMA 知识库。串行执行，较慢。">
-          <input type="checkbox" id="chkFetchAssets"> 入库时同时抓取 PDF 与源码（较慢，串行执行）
+               title="勾选后，入库的论文会自动从 arXiv 下载原文 PDF 与 LaTeX 源码，解压后一并上传到 IMA 知识库。串行执行，较慢。" data-page-node-id="BMqOtsnfZTholAOMVGMHx0">
+          <input type="checkbox" id="chkFetchAssets" data-page-node-id="WEjSw8IDKL0NLg4yi6FtJl"> 入库时同时抓取 PDF 与源码（较慢，串行执行）
         </label>
-        <button class="btn sm primary" id="btnBulkAdd" disabled>批量入库（0）</button>
-        <span class="muted" id="radarBulkTip"></span>
+        <button class="btn sm primary" id="btnBulkAdd" disabled data-page-node-id="sTbWuD5HPokYKvqYk7Hw7g">批量入库（0）</button>
+        <span class="muted" id="radarBulkTip" data-page-node-id="AFFBoMBMwDCfsxQ7pOK8tG"></span>
       </div>
-      <div id="radarResults"></div>
+      <div id="radarResults" data-page-node-id="RiCdfIgqN6LowtoUey6OEr"></div>
     </section>
 
     <!-- 设置 -->
-    <section class="page" id="page-settings">
-      <div class="card" style="margin-bottom:16px">
-        <h3>AI / API 配置</h3>
-        <p class="muted">自定义 OpenAI-Compatible API，使工作台 AI 能力（总结 / 论文库问答）不依赖单一平台。API Key 后端加密存储。</p>
-        <div class="field-row"><label>Provider</label><input id="apiProvider" style="width:100%"></div>
-        <div class="field-row"><label>Base URL</label><input id="apiBase" placeholder="https://api.openai.com/v1" style="width:100%"></div>
-        <div class="field-row"><label>API Key</label><input id="apiKey" type="password" placeholder="留空表示不修改" style="width:100%"></div>
-        <div class="field-row"><label>Model</label><input id="apiModel" placeholder="gpt-4o / deepseek-chat ..." style="width:100%"></div>
-        <div class="field-row"><label>其他参数</label><input id="apiOther" placeholder='{"top_p":0.9}' style="width:100%"></div>
-        <div class="toolbar"><button class="primary" id="btnSaveApi">保存 API 配置</button></div>
+    <section class="page" id="page-settings" data-page-node-id="qF6Ncz5MwCNA1suWLxboeA">
+      <div class="card" style="margin-bottom:16px" data-page-node-id="hwpV7lfKmlkvsi6JE8Yv2f">
+        <h3 data-page-node-id="fFVyoO5RTnBqDPlol1wKN6">AI / API 配置</h3>
+        <p class="muted" data-page-node-id="npohGcxLbcECC1U9QSZkGI">自定义 OpenAI-Compatible API，使工作台 AI 能力（总结 / 论文库问答）不依赖单一平台。API Key 后端加密存储。</p>
+        <div class="cfg-warn hidden" id="apiWarn" data-page-node-id="3ziYPiM38GMS9FAN02yJKQ"></div>
+        <div class="field-row" data-page-node-id="x7GYEmsdFMKe142cjUTAt4"><label data-page-node-id="U3iB2nQsmfKPu5gXNQyGzC">Provider</label><input id="apiProvider" style="width:100%" data-page-node-id="VzsAhVBlwYoBdBp3Gcz77L"></div>
+        <div class="field-row" data-page-node-id="F985FgtflaKDkgwViIaLDd"><label data-page-node-id="FOWVunhz5J52Ge6NETjNy4">Base URL</label><input id="apiBase" placeholder="https://api.openai.com/v1" style="width:100%" data-page-node-id="4MQqvT1d0gz0N1gOxNCk1N"></div>
+        <div class="field-row" data-page-node-id="YxFuxJvrm2k9z48J2lLcSp"><label data-page-node-id="pMNq8YVDnJSskNA5DlAGRG">API Key</label><input id="apiKey" type="password" placeholder="留空表示不修改" style="width:100%" data-page-node-id="Cq5cP9P9TxZ6Ax7AhUFXpZ"></div>
+        <div class="field-row" data-page-node-id="sFxWDZM65uWCKPNAA0Una4"><label data-page-node-id="1ePcLMpOSiwJedyOKvSDpx">Model</label><input id="apiModel" placeholder="gpt-4o / deepseek-chat ..." style="width:100%" data-page-node-id="MIWweCsvQ9xo6Zgu95J3Ae"></div>
+        <div class="field-row" data-page-node-id="22sCKs2192nn3tkDq76Dov"><label data-page-node-id="GcLz25P0Iw0qPf8VVeAMTS">其他参数</label><input id="apiOther" placeholder='{"top_p":0.9}' style="width:100%" data-page-node-id="e4kuoDbt9MbYCGKiYBVlJm"></div>
+        <div class="toolbar" data-page-node-id="RooUTk2uH2qmYLgxu24Oen"><button class="primary" id="btnSaveApi" data-page-node-id="Lk1SneZI7E6BRhXW2CpMdH">保存 API 配置</button><button class="btn" id="btnTestApi" type="button" data-page-node-id="ePvoe13hXaRATf0FRzZpDV">测试连通</button><span class="conn-status" id="apiConn" data-page-node-id="4xWSsvlBsm4ea8a0Js3wp1"></span></div>
       </div>
 
-      <div class="card" style="margin-bottom:16px">
-        <h3>arXiv 检索源</h3>
-        <p class="muted">arXiv 官方主站在国内常需代理；可切换为上海交大 / 中科大的国内直连镜像，通常无需代理即可访问。切换后下次检索生效。任一源失败会自动回退到主站。</p>
-        <div class="field-row"><label>论文源</label><select id="arxivSource" style="width:100%"></select></div>
-        <div class="toolbar"><button class="primary" id="btnSaveArxiv">保存 arXiv 源</button>
-          <span class="muted" id="arxivSourceTip"></span></div>
+      <div class="card" style="margin-bottom:16px" data-page-node-id="miTAIN5cHRPMAtF9TGHIBU">
+        <div class="h3-row" data-page-node-id="kf7Yvvih0aE4le7rAPqHsY"><h3 data-page-node-id="LRcLSdoCFFuGr8gixLWNbd">IMA 知识库凭证（存储后端）</h3><a class="help-icon" id="imaHelpLink" target="_blank" title="查看使用说明书" aria-label="查看使用说明书" data-page-node-id="EGky6mVGQLQ4Jnjz6AUGNp"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" data-page-node-id="1FjbxNwJpTiXb5qOTgmnfZ"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" data-page-node-id="n0WYm7VpEWkt5byjbfLotB"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4 1.5 1.5 0 0 0-1.2 1.4v.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" data-page-node-id="kGHjPU3XHgHzn1FMpvUfsi"/><circle cx="12" cy="17" r="1.2" fill="currentColor" data-page-node-id="cyL3ZgAlRwiKELidFLljxQ"/></svg></a></div>
+        <p class="muted" data-page-node-id="ejj1IRIA3dGHZq8Dk4CfqI">ResearchBench 以 IMA 知识库为唯一存储后端。服务器部署没有 .env 时，可在此填写凭证并保存（写入 data/ima_creds.json，已被 .gitignore 忽略）。也可用环境变量注入：<code data-page-node-id="luYX1n537CNpperMGbtzb7">IMA_OPENAPI_CLIENTID</code> / <code data-page-node-id="a9T7RFZxoKhit4XGt2bZPf">IMA_OPENAPI_APIKEY</code> / <code data-page-node-id="2WmTVxhLcuNfQZ2C0ABGpD">IMA_KB_ID</code>。保存后即时生效，无需重启。</p>
+        <div class="cfg-warn hidden" id="imaWarn" data-page-node-id="4ALpHGQLnP4o6GNrsk9PtR"></div>
+        <div class="field-row" data-page-node-id="hfUe1ZMFCULeRHphl9BBim"><label data-page-node-id="Fd53HBdDRIh6BRC540WiYE">Client ID</label><input id="imaClientId" placeholder="IMA_OPENAPI_CLIENTID" style="width:100%" data-page-node-id="flMx6osZFu4JDJ3mvh1ApO"></div>
+        <div class="field-row" data-page-node-id="nCCU1HVCWgIQ3b9MqGeMCy"><label data-page-node-id="huKZzQHcSa8hTT2x2TUul4">API Key</label><input id="imaApiKey" type="password" placeholder="留空表示不修改" style="width:100%" data-page-node-id="ASqLAroZgeICNhEC3uBUMH"></div>
+        <div class="field-row" data-page-node-id="4b4MkdWHJ5XCznKnUZ1Q49"><label data-page-node-id="VEtWof6YAHHpvnCEDvr1ZJ">知识库 ID（可选）</label><input id="imaKbId" placeholder="IMA_KB_ID，留空则自动选第一个可写库" style="width:100%" data-page-node-id="2Xymo3o2AeQ4yZCRCjtP6P"></div>
+        <div class="toolbar" data-page-node-id="itg1481fbbYHtFfhFnFofg"><button class="primary" id="btnSaveIma" data-page-node-id="VTbP1xVBWIv2LXHDCneRsG">保存 IMA 凭证</button><button class="btn" id="btnTestIma" type="button" data-page-node-id="kcRLaVGpmfL1XLazAgwZgk">测试连通</button><span class="conn-status" id="imaConn" data-page-node-id="ebMFULmhIoCCpJF9U5rP6k"></span></div>
       </div>
 
-      <div class="card" style="margin-bottom:16px">
-        <h3>资讯源 · 自定义 RSS</h3>
-        <p class="muted">除 Google News 外，「国内媒体」渠道会并行抓取下方所有 RSS 源（已实测可用的内置源：量子位、36氪、InfoQ、少数派）。你也可以追加自己的媒体 / 公众号转 RSS（如 werss.io）。每行一个，格式：<code>名称|URL</code>。</p>
-        <div id="rssBuiltin" class="muted" style="margin-bottom:8px"></div>
+      <div class="card" style="margin-bottom:16px" data-page-node-id="aLHEDhIrOEjUTYZaxty286">
+        <h3 data-page-node-id="GGT9746oI5wlzc5qwl8q5G">arXiv 检索源</h3>
+        <p class="muted" data-page-node-id="5pT4TLWD09ENdotfMRMuCc">arXiv 官方主站在国内常需代理；可切换为上海交大 / 中科大的国内直连镜像，通常无需代理即可访问。切换后下次检索生效。任一源失败会自动回退到主站。</p>
+        <div class="field-row" data-page-node-id="jOhcIIV0H9m7VEL1D7of5K"><label data-page-node-id="Hg31NOdRPNovRC7GDBy5H6">论文源</label><select id="arxivSource" style="width:100%" data-page-node-id="J5J08APNrj427pBjWbOK1y"></select></div>
+        <div class="toolbar" data-page-node-id="kBGpAvZXpd6W30uCczKiaP"><button class="primary" id="btnSaveArxiv" data-page-node-id="AoprcBjxfb3oUgekcaBCSx">保存 arXiv 源</button><button class="btn" id="btnTestArxiv" type="button" data-page-node-id="gA8Ct9J39v7vE7wULxfTVh">测试连通</button><span class="conn-status" id="arxivConn" data-page-node-id="shVeXQ31ArrKRXVg9l4Rjp"></span></div>
+        <div class="src-scan" id="arxivConnScan" data-page-node-id="fadOcUuusqKghL4iHepdRa"></div>
+        <div class="muted" style="margin-top:4px" data-page-node-id="R7rqa8S0JiBEgOHnd72Hv5">提示：Radar 检索会自动回退到可达的源；若默认的「上海交大镜像」当前不可达，可在此切换为「arXiv 主站 (export.arxiv.org)」并保存（需本机代理可达）。</div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px" data-page-node-id="imHXWexLSPsE5c2Bt1waks">
+        <h3 data-page-node-id="QER5inJzDmz2n2l0Vo6wAJ">资讯源 · 自定义 RSS</h3>
+        <p class="muted" data-page-node-id="gU5GzBrEfz5Cet5Tx5dOr1">除 Google News 外，「国内媒体」渠道会并行抓取下方所有 RSS 源（已实测可用的内置源：量子位、36氪、InfoQ、少数派）。你也可以追加自己的媒体 / 公众号转 RSS（如 werss.io）。每行一个，格式：<code data-page-node-id="KEKNUzeshaDFZrSNdZ4BGe">名称|URL</code>。</p>
+        <div id="rssBuiltin" class="muted" style="margin-bottom:8px" data-page-node-id="6FUIFhOKLWyTPx7jDgSTFI"></div>
         <textarea id="rssFeeds" rows="4" style="width:100%" placeholder="机器之心备用|https://xxx/feed&#10;我的媒体|https://werss.io/xxx"></textarea>
-        <div class="toolbar"><button class="primary" id="btnSaveRss">保存自定义 RSS</button>
-          <span class="muted" id="rssTip"></span></div>
+        <div class="toolbar" data-page-node-id="9jQ0ISIxV290NzuW7a099E"><button class="primary" id="btnSaveRss" data-page-node-id="vpj3GRhVqfFEytd7lNFf9f">保存自定义 RSS</button>
+          <span class="muted" id="rssTip" data-page-node-id="L5Wz8VmVJh9EnT0qPExPEo"></span></div>
       </div>
 
-      <div class="card" style="margin-bottom:16px">
-        <h3>资讯源 · 微信公众号（RSSHub）</h3>
-        <p class="muted">微信公众号没有官方 RSS。标准做法是用 <a href="https://docs.rsshub.app" target="_blank">RSSHub</a> 把公众号转成 RSS，路由为 <code>{RSSHub地址}/wechat/mp/{gh_id}</code>，其中 <code>gh_id</code> 是公众号原始 ID（gh_ 开头，可在公众号后台「公众号设置」查看）。公共实例常不稳定，建议在本地或服务器自建 RSSHub 后填入下方地址。</p>
-        <div class="field-row"><label>RSSHub 地址</label><input id="rsshubBase" placeholder="https://rsshub.app 或你的自建地址" style="width:100%"></div>
-        <div class="toolbar"><button class="primary" id="btnSaveRsshub">保存 RSSHub 地址</button>
-          <span class="muted" id="rsshubTip"></span></div>
-        <div style="margin-top:10px">
-          <label class="muted">要抓取的公众号（每行 名称|gh_id）</label>
+      <div class="card" style="margin-bottom:16px" data-page-node-id="jKkY8UJATPcNNstuTpV0df">
+        <h3 data-page-node-id="M5rk84bZor1BA2HM7IVwnr">资讯源 · 微信公众号（RSSHub）</h3>
+        <p class="muted" data-page-node-id="53PbEvdeznAMmdktJSCAw2">微信公众号没有官方 RSS。标准做法是用 <a href="https://docs.rsshub.app" target="_blank" data-page-node-id="HX3LAtFIAfs9xUrjFLx0cC">RSSHub</a> 把公众号转成 RSS，路由为 <code data-page-node-id="hGHKvfPueaKONHHBKCMhDF">{RSSHub地址}/wechat/mp/{gh_id}</code>，其中 <code data-page-node-id="WpfCKqgTGjcXWWL4y69Kod">gh_id</code> 是公众号原始 ID（gh_ 开头，可在公众号后台「公众号设置」查看）。公共实例常不稳定，建议在本地或服务器自建 RSSHub 后填入下方地址。</p>
+        <div class="cfg-warn hidden" id="rsshubWarn" data-page-node-id="gzKIBtJe2nA2Yq11RZHvcN"></div>
+        <div class="field-row" data-page-node-id="S4pS8choRkEctqCm5ExNKl"><label data-page-node-id="X5Xq2ME2AG04PwoCw7AJm1">RSSHub 地址</label><input id="rsshubBase" placeholder="https://rsshub.app 或你的自建地址" style="width:100%" data-page-node-id="MydlEJyVJLnivc9BHuj5OX"></div>
+        <div class="toolbar" data-page-node-id="nnSRLmMsDyBbNPMkPbjDYl"><button class="primary" id="btnSaveRsshub" data-page-node-id="9EkAH5mTSza6daxUEldTXd">保存 RSSHub 地址</button><button class="btn" id="btnTestRsshub" type="button" data-page-node-id="IVfBuFgUmlu582dpSrsnBV">测试连通</button><span class="conn-status" id="rsshubConn" data-page-node-id="TdimaUm2ekklxmA5hV6X9y"></span></div>
+        <div style="margin-top:10px" data-page-node-id="IHuBUrwXMOohyx4oGE0L1H">
+          <label class="muted" data-page-node-id="XDBZbJEhFX3HnLsnRB0ngM">要抓取的公众号（每行 名称|gh_id）</label>
+          <div class="cfg-warn hidden" id="wechatWarn" data-page-node-id="cR6TI2M57oNdi8MBR1MnUd"></div>
           <textarea id="wechatAccounts" rows="4" style="width:100%" placeholder="机器之心|gh_4df112579a8c&#10;新智元|gh_xxxxxxxxxxxx"></textarea>
-          <div class="toolbar"><button class="primary" id="btnSaveWechat">保存公众号列表</button>
-            <span class="muted" id="wechatTip"></span></div>
+          <div class="toolbar" data-page-node-id="odHTJIAd9TTaEBsKqDLXZ8"><button class="primary" id="btnSaveWechat" data-page-node-id="Kq89wJK5aHVZJd2gJ480yi">保存公众号列表</button>
+            <span class="muted" id="wechatTip" data-page-node-id="d2ELKUV4TQrRPvxXb4PahK"></span></div>
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:16px">
-        <h3>Radar 检索代理</h3>
-        <p class="muted">当本机无法直接访问 arXiv / Google News 时（如内网、沙箱、或需走代理上网），在此填写代理地址，检索即可走代理。留空则使用环境变量 HTTPS_PROXY / HTTP_PROXY，再否则直连。</p>
-        <div class="field-row"><label>代理地址</label><input id="radarProxy" placeholder="http://127.0.0.1:7890" style="width:100%"></div>
-        <div class="toolbar"><button class="primary" id="btnSaveProxy">保存代理</button></div>
+      <div class="card" style="margin-bottom:16px" data-page-node-id="OwcuP2h8APDTHQos5ekSj9">
+        <h3 data-page-node-id="KcjEmYlKyF0JohC5jw7gmZ">Radar 检索代理</h3>
+        <p class="muted" data-page-node-id="y9JbCAXNoqXTufgZQM1IPy">当本机无法直接访问 arXiv / Google News 时（如内网、沙箱、或需走代理上网），在此填写代理地址，检索即可走代理。留空则使用环境变量 HTTPS_PROXY / HTTP_PROXY，再否则直连。</p>
+        <div class="cfg-warn hidden" id="proxyWarn" data-page-node-id="TFNLyXzWTaDAgjYgxJG9BQ"></div>
+        <div class="field-row" data-page-node-id="nVeQYL5x4MfDrhCLjAS26r"><label data-page-node-id="bEUXRaxO2MG72abHEjDjDv">代理地址</label><input id="radarProxy" placeholder="http://127.0.0.1:7890" style="width:100%" data-page-node-id="ipDywGhVgv1HStmgVbukmg"></div>
+        <div class="toolbar" data-page-node-id="2HWzctHXHgti1inyus3zTZ"><button class="primary" id="btnSaveProxy" data-page-node-id="5Y4R6FHpLREe4l1BE8YQ3P">保存代理</button><button class="btn" id="btnTestProxy" type="button" data-page-node-id="vd2BPJGWbqhM1mS3wbqZgp">测试连通</button><span class="conn-status" id="proxyConn" data-page-node-id="puMxXU8iGzFzwFfgw37CBA"></span></div>
       </div>
 
-      <div class="card" style="margin-bottom:16px">
-        <h3>阅读目标</h3>
-        <div class="field-row"><label>每周目标（篇）</label><input id="weeklyGoal" type="number" style="width:120px"></div>
-        <div class="toolbar"><button class="primary" id="btnSavePrefs">保存目标</button></div>
+      <div class="card" style="margin-bottom:16px" data-page-node-id="umz7x0g0k0HhCglHDMDhcX">
+        <h3 data-page-node-id="FNZd5qCPjbpel2QgfWRPrI">阅读目标</h3>
+        <div class="field-row" data-page-node-id="J74EUmDwEu99SeoTDGi4Rv"><label data-page-node-id="IDlaJiLM1JPYL14hORCxx8">每周目标（篇）</label><input id="weeklyGoal" type="number" style="width:120px" data-page-node-id="HoFJbZJHvOODCDp7uRGo7Q"></div>
+        <div class="toolbar" data-page-node-id="Of8fCpoSoCV339UFUO4XXn"><button class="primary" id="btnSavePrefs" data-page-node-id="cgsMEp6vzXfLKhcOLBzLnn">保存目标</button></div>
       </div>
 
-      <div class="card">
-        <h3>飞书云文档（TeX → 飞书）</h3>
-        <p class="muted">仅用于论文中文阅读文档。配置应用凭证并授权后，TeX→飞书 工具即可写入同名云文档。</p>
-        <div class="field-row"><label>App ID</label><input id="feishuAppId" style="width:100%"></div>
-        <div class="field-row"><label>App Secret</label><input id="feishuSecret" type="password" style="width:100%"></div>
-        <div class="toolbar">
-          <button class="btn" id="btnSaveFeishu">保存飞书凭证</button>
-          <button class="primary" id="btnAuthFeishu">🔑 授权并获取 Token</button>
-          <span class="muted" id="feishuStatus"></span>
+      <div class="card" data-page-node-id="F9UUNuXzgFbVEAxFqIqzcy">
+        <div class="h3-row" data-page-node-id="gulwzDQSWbCZObaJdJQvnk"><h3 data-page-node-id="JdhurTAukFeLGErcdDOBsT">飞书云文档（TeX → 飞书）</h3><a class="help-icon" id="feishuHelpLink" target="_blank" title="查看使用说明书" aria-label="查看使用说明书" data-page-node-id="q0d0FNnKHSJwuuoqswD43x"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" data-page-node-id="e0FVVfEO4zTFaDaXSGfyRq"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2" data-page-node-id="kjdXRuMQbXNd5WEAtjsAqU"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.2 2.4 1.5 1.5 0 0 0-1.2 1.4v.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" data-page-node-id="TeO5HVXtNivDlH9HKZvZAQ"/><circle cx="12" cy="17" r="1.2" fill="currentColor" data-page-node-id="yZMZUF2JUfy125jqA7RCNF"/></svg></a></div>
+        <p class="muted" data-page-node-id="bs2KIRIhvEEFZRSAS8yz6H">仅用于论文中文阅读文档。配置应用凭证并授权后，TeX→飞书 工具即可写入同名云文档。</p>
+        <div class="cfg-warn hidden" id="feishuWarn" data-page-node-id="bVLEL9d5xS8htlF6rqkAiG"></div>
+        <div class="field-row" data-page-node-id="3pwdmmziFOVCE711vhaVh3"><label data-page-node-id="9UxiDVfH7ZiwzozTokdf1Z">App ID</label><input id="feishuAppId" style="width:100%" data-page-node-id="YMacfd2JhFqEzsTVuoFabk"></div>
+        <div class="field-row" data-page-node-id="B8QIAahhetrbwVtsapFP0R"><label data-page-node-id="6dzYbsDaC0x7IIPSe4DupN">App Secret</label><input id="feishuSecret" type="password" style="width:100%" data-page-node-id="IovWACbw7QsZdpmlHVeSr1"></div>
+        <div class="toolbar" data-page-node-id="B4y5nXDd7ARh7wwl0TFOIM">
+          <button class="btn" id="btnSaveFeishu" data-page-node-id="4O30e14Tzi3ptwgCrUPg48">保存飞书凭证</button>
+          <button class="primary" id="btnAuthFeishu" data-page-node-id="NwPp53pQojBiGt44TW0h0D">🔑 授权并获取 Token</button>
+          <button class="btn" id="btnTestFeishu" type="button" data-page-node-id="CiJrN4fmGw3RZb6Ir3t0EE">测试连通</button>
+          <span class="conn-status" id="feishuConn" data-page-node-id="BbAV7uuyoyW7yTgfxAiLfe"></span>
         </div>
       </div>
     </section>
   </div>
 
   <!-- 论文详情 / 编辑 弹窗 -->
-  <div class="modal-mask" id="paperModal">
-    <div class="modal" id="paperModalBody"></div>
+  <div class="modal-mask" id="paperModal" data-page-node-id="CUs77A5m1tY5nJvOjMMQVl">
+    <div class="modal" id="paperModalBody" data-page-node-id="qGkuYCr7NpraRT7rpawRKH"></div>
   </div>
   <!-- 翻译任务窗口：后台自动翻译的进度面板 -->
-  <div class="modal-mask" id="translateModal">
-    <div class="modal" style="width:660px">
-      <h3>🌍 论文翻译任务</h3>
-      <p class="muted" style="margin:0 0 10px">任务在后台自动执行：下载源码 → 大模型逐节翻译 → xelatex 编译 → 上传 IMA 知识库。关闭窗口不影响执行；翻译全文耗时较长（通常数分钟到数十分钟），完成后卡片会显示中文版路径。</p>
-      <div id="trTaskList" style="max-height:52vh;overflow:auto"></div>
-      <hr class="sep">
-      <div class="toolbar">
-        <button class="primary" id="trWinClose">关闭</button>
-        <button class="btn" id="trWinRefresh">立即刷新</button>
+  <div class="modal-mask" id="translateModal" data-page-node-id="BH7Gr55igoGbWyk9JGthAu">
+    <div class="modal" style="width:660px" data-page-node-id="krw1sUOg0duvtOsx8RQYC7">
+      <h3 data-page-node-id="XmBDf73ilTim0Wq4wDoQpB">🌍 论文翻译任务</h3>
+      <p class="muted" style="margin:0 0 10px" data-page-node-id="ekKnMkus76Pg2jtC4jrDFA">任务在后台自动执行：下载源码 → 大模型逐节翻译 → xelatex 编译 → 上传 IMA 知识库。关闭窗口不影响执行；翻译全文耗时较长（通常数分钟到数十分钟），完成后卡片会显示中文版路径。</p>
+      <div id="trTaskList" style="max-height:52vh;overflow:auto" data-page-node-id="GoFpgdfbgqtZNFRi5TuoXd"></div>
+      <hr class="sep" data-page-node-id="KswaCXXlbEUFyF9Vehp7PX">
+      <div class="toolbar" data-page-node-id="E7XGytE84BdZfabreIoswG">
+        <button class="primary" id="trWinClose" data-page-node-id="SbekVnksE1jDek73UNClCm">关闭</button>
+        <button class="btn" id="trWinRefresh" data-page-node-id="p4FmwGCQfyxOIeff3cXIih">立即刷新</button>
       </div>
     </div>
   </div>
   <!-- 通用输入弹窗 -->
-  <div class="modal-mask" id="promptModal">
-    <div class="modal" style="width:420px">
-      <h3 id="promptTitle">输入</h3>
-      <input id="promptInput" style="width:100%">
-      <hr class="sep">
-      <div class="toolbar"><button class="primary" id="promptOk">确定</button>
-        <button class="btn" id="promptCancel">取消</button></div>
+  <div class="modal-mask" id="promptModal" data-page-node-id="BqJL8tB4zA4HGibJsPaS2G">
+    <div class="modal" style="width:420px" data-page-node-id="Wzzl38oVrjWZE1wAmYUEsB">
+      <h3 id="promptTitle" data-page-node-id="LjjxPnTbMJuVttXO0nQ7g8">输入</h3>
+      <input id="promptInput" style="width:100%" data-page-node-id="xHKCpXaZXadWrUVfv0aoBC">
+      <hr class="sep" data-page-node-id="7TjhCfWQr241dJxsW07mvX">
+      <div class="toolbar" data-page-node-id="dEea6kzK2sP4h1ey7KErln"><button class="primary" id="promptOk" data-page-node-id="Ag335HfwFUFwGy0Vq3OriX">确定</button>
+        <button class="btn" id="promptCancel" data-page-node-id="042EKXYURAdC6bjtkO1PF1">取消</button></div>
     </div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" data-page-node-id="pJgySq5X7hq5Him0V2bnoT"></div>
   <script src="/static/chart.umd.min.js"></script>
-  <script src="/static/app.js?v=20260831a"></script>
+  <script src="/static/app.js?v=20260831g"></script>
 </body>
 </html>

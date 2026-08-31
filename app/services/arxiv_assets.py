@@ -80,17 +80,15 @@ class AssetError(RuntimeError):
 # ----------------------------------------------------------------------
 # HTTP
 # ----------------------------------------------------------------------
-def _proxies() -> Optional[str]:
-    """出网代理。国内访问 arXiv 常需要，配置见 config.RADAR_PROXY。"""
-    p = (config.RADAR_PROXY or "").strip()
-    return p if p else None
-
-
 def _get(url: str, timeout: int = HTTP_TIMEOUT) -> httpx.Response:
     last: Optional[Exception] = None
     for attempt in range(HTTP_ATTEMPTS):
         try:
-            with httpx.Client(proxy=_proxies(), timeout=timeout,
+            # 不显式传 proxy：httpx 显式代理在 macOS + 该本地代理下会触发
+            # [SSL] record layer failure；改走默认 trust_env，让 httpx 自己从
+            # HTTP_PROXY/HTTPS_PROXY 环境变量读代理即可（config.save_radar_proxy
+            # 已把代理同步进这两个环境变量）。
+            with httpx.Client(timeout=timeout,
                               follow_redirects=True) as client:
                 resp = client.get(url, headers={"User-Agent": UA})
             if resp.status_code < 400:
@@ -106,7 +104,7 @@ def _get(url: str, timeout: int = HTTP_TIMEOUT) -> httpx.Response:
 def _head_content_type(url: str) -> str:
     """先探一下 Content-Type，只作提示用，判定仍以文件魔数为准。"""
     try:
-        with httpx.Client(proxy=_proxies(), timeout=15,
+        with httpx.Client(timeout=15,
                           follow_redirects=True) as client:
             resp = client.head(url, headers={"User-Agent": UA})
     except httpx.HTTPError:

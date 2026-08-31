@@ -431,6 +431,21 @@ def _client() -> IMAClient:
         return _CLIENT
 
 
+def reset_client() -> None:
+    """丢弃缓存的 IMA 客户端与文件夹缓存。
+
+    在「设置」页修改 IMA 凭证后调用，使下一次请求用新凭证重建客户端，
+    无需重启服务。
+    """
+    global _CLIENT
+    with _CLIENT_LOCK:
+        _CLIENT = None
+    with _FOLDER_LOCK:
+        _FOLDER_CACHE["ts"] = 0.0
+        _FOLDER_CACHE["meta"] = None
+        _FOLDER_CACHE["news"] = None
+
+
 def _thread_client(kb: str) -> IMAClient:
     """并发下载时每线程一个客户端（requests.Session 不跨线程复用）。"""
     c = getattr(_TLS, "client", None)

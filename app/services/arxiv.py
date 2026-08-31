@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from ..config import RADAR_PROXY, arxiv_api_base, ARXIV_SOURCES, ARXIV_SOURCE
+from ..config import arxiv_api_base, ARXIV_SOURCES, ARXIV_SOURCE
 
 GITHUB_RE = re.compile(r"https?://github\.com/[^\s)\]\"'>]+", re.I)
 
@@ -51,18 +51,24 @@ async def fetch_papers(keywords: str, days: int = 2, max_results: int = 30):
     last_err = None
     for key in _arxiv_fallback_order():
         base = ARXIV_SOURCES[key][1]
-        try:
-            async with httpx.AsyncClient(timeout=30, proxy=RADAR_PROXY or None) as client:
-                resp = await client.get(base, params=params)
-                if resp.status_code == 429:
-                    last_err = httpx.HTTPError("arXiv 返回 429（请求过于频繁，请稍后重试；共享代理 IP 易被限流）")
-                    continue
-                resp.raise_for_status()
-                raw = resp.text
-                break
-        except Exception as e:
-            last_err = e
-            continue
+        # 不再显式传 proxy=RADAR_PROXY：httpx 显式代理在 macOS + 该本地代理下会触发
+        # SSL record layer failure；改走默认 trust_env，让它从 HTTP_PROXY/HTTPS_PROXY
+        # 环境变量读代理。config.py 在 save/load 时已同步文件代理到环境变量。
+        for attempt in range(2):          # 同一源偶发握手失败，重试一次
+            try:
+                async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                    resp = await client.get(base, params=params)
+                    if resp.status_code == 429:
+                        last_err = httpx.HTTPError("arXiv 返回 429（请求过于频繁，请稍后重试；共享代理 IP 易被限流）")
+                        break
+                    resp.raise_for_status()
+                    raw = resp.text
+                    break
+            except Exception as e:
+                last_err = e
+                continue
+        if raw:
+            break
     if not raw:
         raise last_err or httpx.HTTPError("所有 arXiv 源均无法访问")
 

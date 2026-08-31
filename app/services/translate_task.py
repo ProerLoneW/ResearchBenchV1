@@ -29,6 +29,7 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -66,6 +67,12 @@ _APPENDIX_NAME_RE = re.compile(
 # 常见的入口文件名（按优先级）
 _ENTRY_CANDIDATES = ("main.tex", "ms.tex", "paper.tex", "arxiv.tex",
                      "root.tex", "article.tex")
+
+# 编译依赖扫描：哪些命令会引用 .sty/.cls/.bst，缺失会导致 xelatex 直接中断
+_DEP_RE = re.compile(
+    r"\\(usepackage|RequirePackage|documentclass)\b\s*"
+    r"(?:\[[^\]]*\])?\s*\{([^}]*)\}")
+_BST_RE = re.compile(r"\\bibliographystyle\s*\{([^}]*)\}")
 
 
 class TaskError(RuntimeError):
@@ -410,6 +417,159 @@ def _source_is_corrupt(source_dir: Path) -> bool:
     return False
 
 
+# ----------------------------------------------------------------------
+# 编译依赖完整性兜底
+# ----------------------------------------------------------------------
+def _scan_missing_deps(source_dir: Path) -> Dict[str, set]:
+    """
+    扫描源码树里所有 .tex 引用的 .sty/.cls/.bst，返回缺失的
+    {文件名: {引用它的目录集合}}。已存在于源码树任意位置的视为满足。
+
+    只关心真正会让 xelatex 中断的编译期依赖；数据文件（.bib/.bbl）不参与，
+    因为缺它们只是参考文献为空，不会阻断编译。
+    """
+    refs: Dict[str, set] = {}
+    present = {p.name for p in source_dir.rglob("*") if p.is_file()}
+    for tex in source_dir.rglob("*.tex"):
+        try:
+            text = tex.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        refdir = tex.parent
+        for m in _DEP_RE.finditer(text):
+            cmd = m.group(1)
+            # \usepackage{a, b, c} 会分别加载 a.sty / b.sty / c.sty
+            for raw in m.group(2).split(","):
+                pkg = raw.strip()
+                if not pkg or "/" in pkg:      # 跳过带路径的引用
+                    continue
+                ext = ".cls" if cmd == "documentclass" else ".sty"
+                fn = f"{pkg}{ext}"
+                refs.setdefault(fn, set()).add(refdir)
+        for m in _BST_RE.finditer(text):
+            pkg = m.group(1).strip()
+            if pkg and "/" not in pkg:
+                refs.setdefault(f"{pkg}.bst", set()).add(refdir)
+    return {fn: dirs for fn, dirs in refs.items() if fn not in present}
+
+
+def _system_has(dep_filename: str) -> bool:
+    """
+    该依赖是否由系统 TEXMF 提供（xelatex 能自己解析，不算缺失）。
+
+    用 kpsewhich 探测；没有该命令直接返回 False，交由上层按"缺失"处理。
+    """
+    kp = shutil.which("kpsewhich")
+    if not kp:
+        return False
+    try:
+        r = subprocess.run([kp, dep_filename], capture_output=True,
+                           text=True, timeout=10)
+        return r.returncode == 0 and r.stdout.strip() != ""
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _fill_missing_deps(source_dir: Path, arxiv_id: str,
+                        allow_arxiv_fetch: bool) -> Dict[str, Any]:
+    """
+    兜底：补齐缺失的编译依赖（.sty/.cls/.bst）。
+
+    返回审计字典 {scanned, missing, filled, unresolved, arxiv_fetch, note}：
+      - 先扫本地缺哪些依赖；
+      - 用 kpsewhich 区分"系统自带宏包"（xelatex 自己能解析，不算缺失）与
+        真正缺失的自定义样式；只有后者才值得去 arXiv 拉一次完整源码补全，
+        避免对每篇 IMA/本地复用论文都白跑一趟网络；
+      - 若 allow_arxiv_fetch 且确有自定义样式缺失，从 arXiv 重拉源码，把缺的
+        文件拷进引用它的目录（保留相对结构），单次下载即可补全多个缺口；
+      - 仍缺的自定义样式记进 unresolved，提示编译可能失败。
+    """
+    missing = _scan_missing_deps(source_dir)
+    audit: Dict[str, Any] = {
+        "scanned": len(missing), "missing": sorted(missing),
+        "filled": [], "unresolved": [], "arxiv_fetch": False, "note": "",
+    }
+    if not missing:
+        audit["note"] = "编译依赖完整，无需补齐"
+        return audit
+
+    # 系统宏包先摘出来，不触发 arXiv 下载
+    system_pkgs = [fn for fn in missing if _system_has(fn)]
+    custom_missing = {fn: dirs for fn, dirs in missing.items()
+                      if fn not in system_pkgs}
+    for fn in system_pkgs:
+        audit["note"] += f"{fn} 由系统 TEXMF 提供；"
+
+    if not custom_missing:
+        audit["note"] = (audit["note"] + "编译依赖完整（标准宏包由系统提供）"
+                         ).strip("；")
+        return audit
+
+    filled: List[str] = []
+    if allow_arxiv_fetch:
+        src, why = arxiv_assets._fetch_source(arxiv_id)
+        if src is not None:
+            audit["arxiv_fetch"] = True
+            try:
+                for fn, dirs in custom_missing.items():
+                    cand = [p for p in src.rglob(fn) if p.is_file()]
+                    if not cand:
+                        continue
+                    src_file = cand[0]
+                    targets = set(dirs) or {source_dir}
+                    for d in targets:
+                        d.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_file, d / fn)
+                    filled.append(fn)
+            finally:
+                shutil.rmtree(src.parent, ignore_errors=True)
+
+    still = [fn for fn in custom_missing if fn not in filled]
+    audit["filled"] = sorted(filled)
+    audit["unresolved"] = sorted(still)
+    if still:
+        audit["note"] = (audit["note"] + "以下自定义样式缺失且无法补齐："
+                         + "、".join(still)
+                         + "（编译可能失败，请检查 arXiv 源码）").strip("；")
+    elif audit["note"]:
+        audit["note"] = audit["note"].rstrip("；")
+    return audit
+
+
+def _sync_filled_to_ima(paper: dict, source_dir: Path,
+                        filled: List[str]) -> int:
+    """
+    把本地补齐的依赖文件回写到 IMA tex_source，避免下次复用仍缺。
+
+    返回成功上传数（失败静默，不阻断主流程）。
+    """
+    if not filled:
+        return 0
+    tex_path = (paper.get("ima_tex_path") or "").strip().strip("/")
+    if not tex_path:
+        return 0
+    try:
+        client = ima_store._client()
+        kb = client.knowledge_base_id
+        base_parts = tex_path.split("/")
+        count = 0
+        for fn in filled:
+            for lp in (p for p in source_dir.rglob(fn) if p.is_file()):
+                rel = lp.parent.relative_to(source_dir)
+                parts = base_parts + [p for p in rel.parts
+                                      if p not in (".", "..", "")]
+                try:
+                    fid = client.ensure_path(kb, parts)
+                    client.upload_file(kb, lp, folder_id=fid)
+                    count += 1
+                except Exception as exc:
+                    logger.warning("回写 IMA 依赖 %s 失败: %s", fn, exc)
+        return count
+    except Exception as exc:
+        logger.warning("回写 IMA 依赖失败: %s", exc)
+        return 0
+
+
 def create_task(pid: int, force_fresh: bool = False) -> dict:
     """
     为一篇论文建中译任务。
@@ -471,6 +631,29 @@ def create_task(pid: int, force_fresh: bool = False) -> dict:
                     # fetch_source 返回的是临时目录下的 src/，父目录即临时目录
                     shutil.rmtree(src.parent, ignore_errors=True)
 
+        # ---- 编译依赖完整性兜底 ----
+        # 入口/章节引用的 .sty/.cls/.bst 若本地缺失（常见于从 IMA 复用源码时
+        # 漏下载，或源码包本身不完整），自动从 arXiv 补齐，避免 xelatex 编译
+        # 因 "File `xxx.sty' not found" 直接中断。来源已是 arXiv 时不再重拉
+        # （拉了也一样缺），只走 kpsewhich 系统宏包探测 + 告警。
+        try:
+            dep_audit = _fill_missing_deps(
+                source_dir, arxiv_id,
+                allow_arxiv_fetch=(source_from_ima or reused))
+            if dep_audit["filled"]:
+                synced = _sync_filled_to_ima(paper, source_dir,
+                                            dep_audit["filled"])
+                if synced:
+                    logger.info("已将 %d 个缺失依赖回写 IMA tex_source", synced)
+            if dep_audit["unresolved"]:
+                logger.warning("编译依赖仍缺失：%s",
+                               "、".join(dep_audit["unresolved"]))
+        except Exception as exc:
+            logger.warning("编译依赖兜底检查异常（不影响建任务）: %s", exc)
+            dep_audit = {"scanned": 0, "missing": [], "filled": [],
+                         "unresolved": [], "arxiv_fetch": False,
+                         "note": f"依赖检查异常：{type(exc).__name__}: {exc}"}
+
         structure = analyze_source(source_dir)
         tasks = _load_state()
         task_id = _new_task_id(int(pid), tasks)
@@ -487,6 +670,7 @@ def create_task(pid: int, force_fresh: bool = False) -> dict:
             "source_from_ima": source_from_ima,
             "source_origin": ("ima" if source_from_ima
                               else ("local" if reused else "arxiv")),
+            "dep_audit": dep_audit,
             "entry_tex": structure["entry_tex"],
             "entry_tex_abs": structure["entry_tex_abs"],
             "entry_has_appendix_line": structure["entry_has_appendix_line"],
