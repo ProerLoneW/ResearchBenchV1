@@ -8,11 +8,11 @@
 
 | 看板Dashboard | 论文库 |
 |:---:|:---:|
-| ![看板](./images/image1.png) | ![论文库](./images/image2.png) |
+| ![看板](./images/v1/image1.png) | ![论文库](./images/v1/image2.png) |
 
 | 资讯库 | Research Radar | 设置 |
 |:---:|:---:|:---:|
-| ![资讯库](./images/image3.png) | ![Research Radar](./images/image4.png) | ![设置](./images/image5.png) |
+| ![资讯库](./images/v1/image3.png) | ![Research Radar](./images/v1/image4.png) | ![设置](./images/v1/image5.png) |
 
 ## 设计理念：可独立使用，也支持 AI 增强
 
